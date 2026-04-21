@@ -362,7 +362,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.map((mod, i) => {
+          {filtered.map((mod) => {
             const globalIdx = baseMods.indexOf(mod);
             return (
               <div

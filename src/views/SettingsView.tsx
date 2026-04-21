@@ -11,7 +11,6 @@ interface Props {
 
 export default function SettingsView({ paths, onPathsChange, toast }: Props) {
   const [exePath, setExePath] = useState<string>("");
-  const [loadingExe, setLoadingExe] = useState(false);
 
   // Load stored exe on mount
   useState(() => {
