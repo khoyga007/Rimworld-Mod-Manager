@@ -26,9 +26,11 @@ export interface RimWorldPaths {
 
 export interface DownloadProgress {
   workshop_id: string;
-  status: "queued" | "downloading" | "extracting" | "installing" | "done" | "error";
+  status: string; // Made generic to support backend values flexibly
   progress: number;
   message: string;
+  title?: string;
+  preview_url?: string;
 }
 
 export interface Preset {
