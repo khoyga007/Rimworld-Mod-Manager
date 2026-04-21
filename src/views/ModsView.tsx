@@ -13,7 +13,6 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "enabled" | "disabled">("all");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<ModInfo[] | null>(null);
   const [dirty, setDirty] = useState(false);
   const [batchStatus, setBatchStatus] = useState<{
@@ -38,7 +37,6 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
           // Actually, let's just use the message or mod_id to identify.
           // But since they run sequentially in the backend loop, it's easier.
           
-          let newIndex = prev.modIndex;
           if (status === "scanning" && prev.currentModName !== mod_id) {
              // This doesn't work perfectly for names vs IDs, but we'll manage.
           }
@@ -221,16 +219,14 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     setDragIdx(idx);
   };
 
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
+  const handleDragOver = (e: React.DragEvent, _idx: number) => {
     if (!canDrag) return;
     e.preventDefault();
-    setHoverIdx(idx);
   };
 
   const handleDrop = (idx: number) => {
     if (!canDrag || dragIdx === null || dragIdx === idx) {
       setDragIdx(null);
-      setHoverIdx(null);
       return;
     }
     const items = [...baseMods];
@@ -239,12 +235,10 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     setLocalOrder(items);
     setDirty(true);
     setDragIdx(null);
-    setHoverIdx(null);
   };
 
   const handleDragEnd = () => {
     setDragIdx(null);
-    setHoverIdx(null);
   };
 
   const formatSize = (bytes: number) => {

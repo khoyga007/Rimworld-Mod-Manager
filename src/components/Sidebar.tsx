@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 
 type View = "mods" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
 

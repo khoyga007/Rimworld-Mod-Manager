@@ -5,10 +5,9 @@ import type { DownloadProgress } from "../types";
 interface Props {
   downloads: Map<string, DownloadProgress>;
   toast: (msg: string, type?: string) => void;
-  onRefresh: () => void;
 }
 
-export default function DownloadView({ downloads, toast, onRefresh }: Props) {
+export default function DownloadView({ downloads, toast }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
 
