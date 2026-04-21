@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ModInfo } from "../types";
+
+// Global cache — survives component remounts (tab switches)
+const _imgCache: Record<string, string> = {};
+const _imgLoading = new Set<string>();
 
 interface Props {
   mods: ModInfo[];
@@ -15,6 +19,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<ModInfo[] | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [imgVer, setImgVer] = useState(0); // bump to trigger re-render when images load
   const [batchStatus, setBatchStatus] = useState<{
     active: boolean;
     currentModName: string;
@@ -23,6 +28,22 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     totalMods: number;
     title: string;
   } | null>(null);
+
+  // Load mod preview images via backend (bypasses asset protocol issues)
+  useEffect(() => {
+    let mounted = true;
+    const toLoad = mods.filter(m => m.picture && !_imgCache[m.id] && !_imgLoading.has(m.id));
+    if (toLoad.length === 0) return;
+    
+    for (const mod of toLoad) {
+      _imgLoading.add(mod.id);
+      invoke<string>("read_mod_image", { path: mod.picture }).then(dataUrl => {
+        _imgCache[mod.id] = dataUrl;
+        if (mounted) setImgVer(v => v + 1);
+      }).catch(() => {});
+    }
+    return () => { mounted = false; };
+  }, [mods]);
 
   useEffect(() => {
     let unlisten: any;
@@ -387,8 +408,12 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
 
                 {/* Preview image */}
                 <div style={{ position: "relative" }}>
-                  {mod.picture ? (
-                    <img src={convertFileSrc(mod.picture)} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} />
+                  {_imgCache[mod.id] ? (
+                    <img 
+                      src={_imgCache[mod.id]} 
+                      alt="" 
+                      style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} 
+                    />
                   ) : (
                     <div style={{ width: 48, height: 48, borderRadius: 8, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
                   )}

@@ -32,21 +32,32 @@ export default function App() {
     try {
       const list = await invoke<ModInfo[]>("list_mods");
       setMods(list);
+      setError(null);
     } catch (e: any) {
       console.error("list_mods failed:", e);
+      toast("Failed to load mods: " + (e?.toString() || "Unknown error"), "error");
     }
-  }, []);
+  }, [toast]);
 
-  // Init: detect paths + load mods
+  // Init: detect paths + load mods (separated so one failure doesn't block the other)
   useEffect(() => {
     (async () => {
       try {
         const p = await invoke<RimWorldPaths>("detect_paths");
         setPaths(p);
+      } catch (e: any) {
+        console.error("detect_paths failed:", e);
+        setError(e?.toString() || "Failed to detect paths");
+        setLoading(false);
+        return;
+      }
+
+      try {
         const list = await invoke<ModInfo[]>("list_mods");
         setMods(list);
       } catch (e: any) {
-        setError(e?.toString() || "Failed to detect paths");
+        console.error("list_mods failed:", e);
+        setError("Mod loading failed: " + (e?.toString() || "Unknown error. Check your game directory in Settings."));
       } finally {
         setLoading(false);
       }
@@ -157,22 +168,30 @@ export default function App() {
         {/* View content */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           <div className="main-view animate-slide-up" key={view}>
-            {error && !paths?.game_dir && view !== "settings" && (
+            {error && view !== "settings" && (
               <div className="glass-card" style={{
                 padding: "20px 24px",
                 marginBottom: 32,
-                borderLeft: "4px solid var(--color-warning)",
+                borderLeft: `4px solid ${paths?.game_dir ? 'var(--color-danger)' : 'var(--color-warning)'}`,
                 display: "flex",
                 alignItems: "center",
                 gap: 16,
               }}>
-                <span style={{ fontSize: 24 }}>⚠</span>
-                <div>
-                  <div style={{ fontWeight: 600, color: "var(--color-warning)", marginBottom: 2 }}>Initial Setup Required</div>
+                <span style={{ fontSize: 24 }}>{paths?.game_dir ? '❌' : '⚠'}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: paths?.game_dir ? "var(--color-danger)" : "var(--color-warning)", marginBottom: 2 }}>
+                    {paths?.game_dir ? "Mod Loading Error" : "Initial Setup Required"}
+                  </div>
                   <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                    Please set your RimWorld game directory in <button onClick={() => setView("settings")} style={{ color: "var(--color-accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Settings</button> to enable mod management.
+                    {paths?.game_dir
+                      ? <>{error}. Try checking your game folder or <button onClick={() => setView("settings")} style={{ color: "var(--color-accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0 }}>reconfigure in Settings</button>.</>
+                      : <>Please set your RimWorld game directory in <button onClick={() => setView("settings")} style={{ color: "var(--color-accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Settings</button> to enable mod management.</>
+                    }
                   </div>
                 </div>
+                {paths?.game_dir && (
+                  <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => { refreshMods(); }}>🔄 Retry</button>
+                )}
               </div>
             )}
 

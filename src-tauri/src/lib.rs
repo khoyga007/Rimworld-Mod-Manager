@@ -14,6 +14,7 @@ mod optimize;
 
 use paths::RimWorldPaths;
 use serde::Serialize;
+use base64::Engine as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, State};
@@ -788,6 +789,27 @@ fn analyze_save_game(state: State<AppState>, file_name: String) -> Result<savega
     savegame::analyze_save(&file_name, &installed_ids).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn read_mod_image(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("File not found".into());
+    }
+    let data = std::fs::read(p).map_err(|e| e.to_string())?;
+    let ext = p.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "image/png",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_paths = paths::detect().unwrap_or(RimWorldPaths {
@@ -847,6 +869,7 @@ pub fn run() {
             list_save_games,
             analyze_save_game,
             update_community_rules,
+            read_mod_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

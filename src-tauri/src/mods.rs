@@ -151,21 +151,35 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     
     if let Some(gd) = &paths.game_dir {
         let game_path = PathBuf::from(gd);
+        eprintln!("[RIMPRO] Game dir: {}", gd);
+        eprintln!("[RIMPRO] Game dir exists: {}", game_path.exists());
+        
         let data_dir = game_path.join("Data");
-        if data_dir.exists() { dirs_to_scan.push((data_dir, ModSource::Official)); }
+        if data_dir.exists() { 
+            eprintln!("[RIMPRO] Found Data/ dir");
+            dirs_to_scan.push((data_dir, ModSource::Official)); 
+        }
         let mods_dir = game_path.join("Mods");
-        if mods_dir.exists() { dirs_to_scan.push((mods_dir, ModSource::Local)); }
+        if mods_dir.exists() { 
+            eprintln!("[RIMPRO] Found Mods/ dir");
+            dirs_to_scan.push((mods_dir, ModSource::Local)); 
+        }
         let lnd_dir = game_path.join("LinkNeverDie.Com-GSE").join("mods");
         if lnd_dir.exists() { dirs_to_scan.push((lnd_dir, ModSource::Other)); }
         let sw_dir = game_path.join("SW_mod");
         if sw_dir.exists() { dirs_to_scan.push((sw_dir, ModSource::Other)); }
+    } else {
+        eprintln!("[RIMPRO] WARNING: game_dir is None! No mods will be scanned.");
     }
     
     // Fallback steam workshop path
     let steam_workshop = PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\294100");
     if steam_workshop.exists() {
+        eprintln!("[RIMPRO] Found Steam Workshop dir");
         dirs_to_scan.push((steam_workshop, ModSource::Workshop));
     }
+
+    eprintln!("[RIMPRO] Total directories to scan: {}", dirs_to_scan.len());
 
     let config = read_mods_config(Path::new(&paths.mods_config_path)).unwrap_or_default();
 
@@ -173,21 +187,29 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     let mut seen_ids = std::collections::HashSet::new();
     
     for (dir, source) in dirs_to_scan {
+        let mut count = 0;
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let mod_path = entry.path();
                 if mod_path.is_dir() {
                     let about_file = mod_path.join("About").join("About.xml");
                     if about_file.exists() {
-                        if let Ok(info) = load_mod(&about_file, &mod_path, &config, source.clone()) {
-                            if seen_ids.insert(info.id.clone()) {
-                                out.push(info);
+                        match load_mod(&about_file, &mod_path, &config, source.clone()) {
+                            Ok(info) => {
+                                if seen_ids.insert(info.id.clone()) {
+                                    out.push(info);
+                                    count += 1;
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[RIMPRO] Failed to load mod at {:?}: {}", mod_path, e);
                             }
                         }
                     }
                 }
             }
         }
+        eprintln!("[RIMPRO] Scanned {:?} → {} mods found", dir, count);
     }
 
     // Set load orders (case-insensitive match)
@@ -241,7 +263,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
     let size_bytes = dir_size(mod_path);
     let picture = mod_path.join("About").join("Preview.png");
     let picture_path = if picture.exists() {
-        Some(picture.to_string_lossy().into_owned())
+        Some(picture.to_string_lossy().replace("\\", "/"))
     } else {
         None
     };
