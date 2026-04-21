@@ -381,7 +381,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
             const globalIdx = baseMods.indexOf(mod);
             return (
               <div
-                key={mod.id}
+                key={`${mod.id}-${imgVer}`}
                 draggable={canDrag}
                 onDragStart={() => handleDragStart(globalIdx)}
                 onDragOver={(e) => handleDragOver(e, globalIdx)}
