@@ -52,6 +52,7 @@ fn set_user_dir(state: State<AppState>, path: String) -> Result<RimWorldPaths, S
     let p = paths::detect().map_err(|e| e.to_string())?;
     paths::ensure_dirs(&p).map_err(|e| e.to_string())?;
     *state.paths.lock().unwrap() = p.clone();
+    mods::clear_cache(); // Clear cache so the next list_mods call actually scans
     Ok(p)
 }
 
