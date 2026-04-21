@@ -200,6 +200,8 @@ fn convert_png_with_texconv(texconv: &Path, png_path: &Path) -> Result<()> {
             "-f", "BC7_UNORM",
             "-y",
             "-vflip",
+            "-aw", "4",         // Ensure width is multiple of 4 for BC7
+            "-ah", "4",         // Ensure height is multiple of 4 for BC7
             "-m", "0",          // Generate full mipmap chain
             "-if", "FANT",      // High quality mipmap filter
             "-gpu", "1",        // Use Dedicated GPU (NVIDIA)
@@ -478,10 +480,13 @@ fn resize_single_texture(texconv: &Path, tex_path: &Path, max_res: &str) -> Resu
         .args([
             "-f", "BC7_UNORM",
             "-y",
+            "-vflip",
             "-w", max_res,          // Max width
             "-h", max_res,          // Max height
+            "-aw", "4",             // Ensure width is multiple of 4 for BC7
+            "-ah", "4",             // Ensure height is multiple of 4 for BC7
             "-m", "0",              // Generate full mipmap chain
-            "-if", "FANT",          // High quality mipmap filter
+            "-if", "FANT",      // High quality mipmap filter
             "-gpu", "1",            // Use Dedicated GPU (NVIDIA) for compression
             "-sepalpha",
             "-o", &parent.to_string_lossy(),
@@ -517,7 +522,7 @@ fn resize_single_texture(texconv: &Path, tex_path: &Path, max_res: &str) -> Resu
 /// Helper to quickly read DDS width/height from the 128-byte header
 /// Offset 12: height (u32), Offset 16: width (u32)
 fn get_dds_dimensions(path: &Path) -> Result<(u32, u32)> {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::Read;
     let mut f = fs::File::open(path)?;
     let mut header = [0u8; 20];
     f.read_exact(&mut header)?;
