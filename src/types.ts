@@ -12,6 +12,7 @@ export interface ModInfo {
   path: string;
   descriptor_path: string;
   remote_file_id?: string;
+  source: "official" | "workshop" | "local" | "other";
   enabled: boolean;
   load_order: number;
   size_bytes: number;
@@ -42,7 +43,8 @@ export interface Preset {
 export type LoadOrderIssue =
   | { kind: "MissingDependency"; mod_id: string; mod_name: string; missing: string }
   | { kind: "Cycle"; mod_ids: string[]; mod_names: string[] }
-  | { kind: "OutOfOrder"; mod_id: string; mod_name: string; current_index: number; suggested_index: number };
+  | { kind: "OutOfOrder"; mod_id: string; mod_name: string; current_index: number; suggested_index: number }
+  | { kind: "Incompatible"; mod_id: string; mod_name: string; conflicting_id: string; conflicting_name: string };
 
 export interface ModPlan {
   mod_id: string;

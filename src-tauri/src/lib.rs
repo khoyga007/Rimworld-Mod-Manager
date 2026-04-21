@@ -10,12 +10,13 @@ mod size_analysis;
 mod steamcmd;
 mod updates;
 mod workshop;
+mod optimize;
 
 use paths::RimWorldPaths;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, State};
 use tokio::sync::Mutex as TokioMutex;
 
 static DOWNLOAD_LOCK: TokioMutex<()> = TokioMutex::const_new(());
@@ -85,6 +86,94 @@ fn set_enabled_set(state: State<AppState>, ids: Vec<String>) -> Result<(), Strin
 fn delete_mod(state: State<AppState>, id: String) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
     mods::delete_mod(&p, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn backup_mod_to_local(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        mods::backup_mod_to_local(&p, &id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    // Auto-download texconv if needed
+    if !optimize::has_texconv() {
+        optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
+    }
+
+    let p = state.paths.lock().unwrap().clone();
+    
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let target_mod = mod_list.into_iter().find(|m| m.id.eq_ignore_ascii_case(&id))
+        .ok_or_else(|| "Mod not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        optimize::optimize_mod_textures(app, p, target_mod)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Auto-download texconv if needed
+    if !optimize::has_texconv() {
+        optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
+    }
+
+    let p = state.paths.lock().unwrap().clone();
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let local_mods: Vec<_> = mod_list.into_iter().filter(|m| !m.path.contains("workshop")).collect();
+    
+    if local_mods.is_empty() {
+        return Err("No local mods found. Only local (copied) mods can be optimized.".to_string());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        for m in local_mods {
+            let _ = optimize::optimize_mod_textures(app.clone(), p.clone(), m);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn revert_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let local_mods: Vec<_> = mod_list.into_iter().filter(|m| !m.path.contains("workshop")).collect();
+
+    if local_mods.is_empty() {
+        return Err("No local mods found.".to_string());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        for m in local_mods {
+            let _ = optimize::revert_mod_textures(app.clone(), p.clone(), m);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn check_texconv() -> bool {
+    optimize::has_texconv()
+}
+
+#[tauri::command]
+async fn download_texconv() -> Result<String, String> {
+    let path = optimize::ensure_texconv().await.map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[derive(Serialize)]
@@ -581,6 +670,22 @@ fn analyze_load_order(state: State<AppState>) -> Result<auto_sort::LoadOrderAnal
     Ok(auto_sort::analyze(&ms))
 }
 
+#[tauri::command]
+async fn update_community_rules() -> Result<(), String> {
+    let url = "https://raw.githubusercontent.com/RimSort/Community-Rules-Database/main/communityRules.json";
+    let client = reqwest::Client::builder()
+        .user_agent("RimWorldModManager/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+    
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let text = res.text().await.map_err(|e| e.to_string())?;
+    
+    let path = paths::config_dir().join("communityRules.json");
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ---------- Updates ----------
 #[tauri::command]
 async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<updates::UpdateStatus>, String> {
@@ -680,6 +785,12 @@ pub fn run() {
             set_load_order,
             set_enabled_set,
             delete_mod,
+            backup_mod_to_local,
+            optimize_mod_textures,
+            optimize_all_local_mods,
+            revert_all_local_mods,
+            check_texconv,
+            download_texconv,
             read_rimworld_log,
             start_log_tail,
             stop_log_tail,
@@ -705,6 +816,7 @@ pub fn run() {
             fetch_workshop_metas,
             list_save_games,
             analyze_save_game,
+            update_community_rules,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

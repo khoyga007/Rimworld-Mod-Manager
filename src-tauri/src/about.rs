@@ -12,11 +12,13 @@ pub struct ModAbout {
     pub mod_dependencies: Vec<String>,
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
+    pub incompatible_with: Vec<String>,
 }
 
 pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
     let mut reader = Reader::from_str(xml_content);
-    // reader.trim_text(true);
+    reader.config_mut().trim_text(true);
+    reader.config_mut().check_end_names = false;
 
     let mut about = ModAbout::default();
     let mut buf = Vec::new();
@@ -35,17 +37,34 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
                 let txt = e.unescape().unwrap_or_default().to_string();
                 if txt.trim().is_empty() { continue; }
                 
-                let p = path.join("/");
-                if p == "ModMetaData/packageId" { about.package_id = txt.to_lowercase(); }
-                else if p == "ModMetaData/name" { about.name = txt; }
-                else if p == "ModMetaData/author" { about.author = txt; }
-                else if p == "ModMetaData/description" { about.description = txt; }
-                else if p == "ModMetaData/supportedVersions/li" { about.supported_versions.push(txt); }
-                else if p == "ModMetaData/modDependencies/li/packageId" || p == "ModMetaData/modDependencies/li" { 
-                    about.mod_dependencies.push(txt.to_lowercase()); 
+                let mut clean_path = String::new();
+                for p in &path {
+                    let tag = p.split(':').last().unwrap_or(p); // strip namespace
+                    if !clean_path.is_empty() { clean_path.push('/'); }
+                    clean_path.push_str(tag);
                 }
-                else if p == "ModMetaData/loadAfter/li" { about.load_after.push(txt.to_lowercase()); }
-                else if p == "ModMetaData/loadBefore/li" { about.load_before.push(txt.to_lowercase()); }
+                
+                let txt_lower = txt.to_lowercase();
+                
+                if clean_path.ends_with("packageId") && !clean_path.contains("modDependencies") {
+                    about.package_id = txt_lower;
+                } else if clean_path.ends_with("name") {
+                    about.name = txt;
+                } else if clean_path.ends_with("author") {
+                    about.author = txt;
+                } else if clean_path.ends_with("description") {
+                    about.description = txt;
+                } else if clean_path.contains("supportedVersions") && clean_path.ends_with("li") {
+                    about.supported_versions.push(txt);
+                } else if clean_path.contains("modDependencies") && (clean_path.ends_with("packageId") || clean_path.ends_with("li")) {
+                    about.mod_dependencies.push(txt_lower);
+                } else if clean_path.contains("loadAfter") && clean_path.ends_with("li") {
+                    about.load_after.push(txt_lower);
+                } else if clean_path.contains("loadBefore") && clean_path.ends_with("li") {
+                    about.load_before.push(txt_lower);
+                } else if clean_path.contains("incompatibleWith") && clean_path.ends_with("li") {
+                    about.incompatible_with.push(txt_lower);
+                }
             }
             Ok(Event::Eof) => break,
             Err(_) => break,

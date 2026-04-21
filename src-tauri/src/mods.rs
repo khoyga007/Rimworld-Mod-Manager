@@ -6,15 +6,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use std::io::Write;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+static MOD_CACHE: Lazy<Mutex<Option<Vec<ModInfo>>>> = Lazy::new(|| Mutex::new(None));
 
 const REQUIRED_MOD_IDS: &[&str] = &[
-    "core", 
     "ludeon.rimworld", 
     "ludeon.rimworld.royalty", 
     "ludeon.rimworld.ideology", 
     "ludeon.rimworld.biotech", 
     "ludeon.rimworld.anomaly"
 ];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ModSource {
+    Official,  // From Data/ (Core & DLCs)
+    Workshop,  // From Steam Workshop
+    Local,     // From Mods/
+    Other,     // LND, SW, etc.
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModInfo {
@@ -27,10 +39,12 @@ pub struct ModInfo {
     pub dependencies: Vec<String>,
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
+    pub incompatible_with: Vec<String>,
     pub picture: Option<String>,
     pub path: String,
     pub descriptor_path: String,
     pub remote_file_id: Option<String>,
+    pub source: ModSource,
     pub enabled: bool,
     pub load_order: i32,
     pub size_bytes: u64,
@@ -54,8 +68,8 @@ pub fn read_mods_config(path: &Path) -> Result<ModsConfig> {
     
     for line in txt.lines() {
         let l = line.trim();
-        if l.starts_with("<version>") {
-            config.version = l.replace("<version>", "").replace("</version>", "");
+        if let Some(v) = l.strip_prefix("<version>").and_then(|s| s.strip_suffix("</version>")) {
+            config.version = v.trim().to_string();
         } else if l.starts_with("<activeMods>") {
             in_active = true;
         } else if l.starts_with("</activeMods>") {
@@ -82,8 +96,6 @@ pub fn read_mods_config(path: &Path) -> Result<ModsConfig> {
 }
 
 pub fn write_mods_config(path: &Path, config: &ModsConfig) -> Result<()> {
-    let _ = crate::backups::snapshot(path);
-    
     let mut active = config.active_mods.clone();
     // Ensure core is always present
     if !active.iter().any(|m| m.to_lowercase() == "ludeon.rimworld") {
@@ -120,30 +132,39 @@ pub fn write_mods_config(path: &Path, config: &ModsConfig) -> Result<()> {
         file.write_all(out.as_bytes())?;
         file.sync_all()?;
     }
+    
+    let _ = crate::backups::snapshot(path);
     std::fs::rename(&temp_path, path)?;
     
     Ok(())
 }
 
 pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
+    {
+        let cache = MOD_CACHE.lock().unwrap();
+        if let Some(cached_mods) = cache.as_ref() {
+            return Ok(cached_mods.clone());
+        }
+    }
+
     let mut dirs_to_scan = Vec::new();
     
     if let Some(gd) = &paths.game_dir {
         let game_path = PathBuf::from(gd);
         let data_dir = game_path.join("Data");
-        if data_dir.exists() { dirs_to_scan.push(data_dir); }
+        if data_dir.exists() { dirs_to_scan.push((data_dir, ModSource::Official)); }
         let mods_dir = game_path.join("Mods");
-        if mods_dir.exists() { dirs_to_scan.push(mods_dir); }
+        if mods_dir.exists() { dirs_to_scan.push((mods_dir, ModSource::Local)); }
         let lnd_dir = game_path.join("LinkNeverDie.Com-GSE").join("mods");
-        if lnd_dir.exists() { dirs_to_scan.push(lnd_dir); }
+        if lnd_dir.exists() { dirs_to_scan.push((lnd_dir, ModSource::Other)); }
         let sw_dir = game_path.join("SW_mod");
-        if sw_dir.exists() { dirs_to_scan.push(sw_dir); }
+        if sw_dir.exists() { dirs_to_scan.push((sw_dir, ModSource::Other)); }
     }
     
     // Fallback steam workshop path
     let steam_workshop = PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\294100");
     if steam_workshop.exists() {
-        dirs_to_scan.push(steam_workshop);
+        dirs_to_scan.push((steam_workshop, ModSource::Workshop));
     }
 
     let config = read_mods_config(Path::new(&paths.mods_config_path)).unwrap_or_default();
@@ -151,14 +172,14 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     let mut out: Vec<ModInfo> = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
     
-    for dir in dirs_to_scan {
+    for (dir, source) in dirs_to_scan {
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let mod_path = entry.path();
                 if mod_path.is_dir() {
                     let about_file = mod_path.join("About").join("About.xml");
                     if about_file.exists() {
-                        if let Ok(info) = load_mod(&about_file, &mod_path, &config) {
+                        if let Ok(info) = load_mod(&about_file, &mod_path, &config, source.clone()) {
                             if seen_ids.insert(info.id.clone()) {
                                 out.push(info);
                             }
@@ -188,15 +209,28 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     }
 
     out.sort_by_key(|m| m.load_order);
+
+    {
+        let mut cache = MOD_CACHE.lock().unwrap();
+        *cache = Some(out.clone());
+    }
+
     Ok(out)
 }
 
-fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig) -> Result<ModInfo> {
+pub fn clear_cache() {
+    let mut cache = MOD_CACHE.lock().unwrap();
+    *cache = None;
+}
+
+fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: ModSource) -> Result<ModInfo> {
     let txt = fs::read_to_string(about_file)?;
     let d = about::parse_about(&txt).unwrap_or_default();
 
+    let fallback_name = mod_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown_mod");
+
     let id = if d.package_id.is_empty() {
-        mod_path.file_name().unwrap().to_string_lossy().into_owned().to_lowercase()
+        fallback_name.to_lowercase()
     } else {
         d.package_id.clone()
     };
@@ -217,7 +251,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig) -> Result<M
     };
 
     let name = if d.name.is_empty() {
-        mod_path.file_name().unwrap().to_string_lossy().into_owned()
+        fallback_name.to_string()
     } else {
         d.name.clone()
     };
@@ -232,10 +266,12 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig) -> Result<M
         dependencies: d.mod_dependencies,
         load_after: d.load_after,
         load_before: d.load_before,
+        incompatible_with: d.incompatible_with,
         picture: picture_b64,
         path: mod_path.to_string_lossy().into_owned(),
         descriptor_path: about_file.to_string_lossy().into_owned(),
         remote_file_id: None,
+        source,
         enabled,
         load_order: i32::MAX,
         size_bytes,
@@ -264,7 +300,9 @@ pub fn set_enabled(paths: &RimWorldPaths, id: &str, enabled: bool) -> Result<()>
     if enabled {
         config.active_mods.push(id.to_string());
     }
-    write_mods_config(Path::new(&paths.mods_config_path), &config)
+    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    clear_cache();
+    Ok(())
 }
 
 pub fn set_all_enabled(paths: &RimWorldPaths, enabled: bool) -> Result<()> {
@@ -279,7 +317,9 @@ pub fn set_all_enabled(paths: &RimWorldPaths, enabled: bool) -> Result<()> {
             REQUIRED_MOD_IDS.iter().any(|&r| r == m_lower)
         });
     }
-    write_mods_config(Path::new(&paths.mods_config_path), &config)
+    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    clear_cache();
+    Ok(())
 }
 
 pub fn set_enabled_set(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
@@ -291,7 +331,9 @@ pub fn set_enabled_set(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
         .cloned()
         .collect();
     config.active_mods = ordered;
-    write_mods_config(Path::new(&paths.mods_config_path), &config)
+    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    clear_cache();
+    Ok(())
 }
 
 pub fn set_order(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
@@ -305,7 +347,9 @@ pub fn set_order(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
         }
     }
     config.active_mods = new_order;
-    write_mods_config(Path::new(&paths.mods_config_path), &config)
+    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    clear_cache();
+    Ok(())
 }
 
 pub fn delete_mod(paths: &RimWorldPaths, id: &str) -> Result<()> {
@@ -321,6 +365,7 @@ pub fn delete_mod(paths: &RimWorldPaths, id: &str) -> Result<()> {
     let id_lower = id.to_lowercase();
     config.active_mods.retain(|m| m.to_lowercase() != id_lower);
     write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    clear_cache();
     Ok(())
 }
 
@@ -335,6 +380,7 @@ pub fn install_from_folder(
         let dest = PathBuf::from(gd).join("Mods").join(workshop_id);
         fs::create_dir_all(&dest)?;
         copy_dir_recursive(source_folder, &dest)?;
+        clear_cache();
         return Ok(workshop_id.to_string());
     }
     Err(anyhow::anyhow!("Game directory not set"))
@@ -358,6 +404,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 }
 
 #[derive(Debug, Default, serde::Serialize)]
+#[allow(dead_code)]
 pub struct MigrateReport {
     pub moved: u32,
     pub skipped: u32,
@@ -365,6 +412,47 @@ pub struct MigrateReport {
     pub details: Vec<String>,
 }
 
+#[allow(dead_code)]
 pub fn migrate_content(_paths: &RimWorldPaths) -> Result<MigrateReport> {
     Ok(MigrateReport::default())
 }
+
+pub fn backup_mod_to_local(paths: &RimWorldPaths, mod_id: &str) -> Result<()> {
+    let mods_list = list(paths)?;
+    let target_mod = mods_list.iter().find(|m| m.id.eq_ignore_ascii_case(mod_id))
+        .context("Mod not found in current list")?;
+
+    let gd = paths.game_dir.as_ref().context("Game directory not set")?;
+    let game_path = PathBuf::from(gd);
+    let local_mods_dir = game_path.join("Mods");
+
+    if !local_mods_dir.exists() {
+        fs::create_dir_all(&local_mods_dir)?;
+    }
+
+    // Create a safe directory name based on mod name
+    let safe_name: String = target_mod.name.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { '_' })
+        .collect();
+    let safe_name = safe_name.trim().to_string();
+
+    let dest_dir = local_mods_dir.join(&safe_name);
+    
+    if dest_dir.exists() {
+        anyhow::bail!("A local mod with this name already exists: {}", safe_name);
+    }
+
+    // Copy directory
+    copy_dir_recursive(Path::new(&target_mod.path), &dest_dir)?;
+
+    // Optional: Remove .git folder if exists
+    let git_dir = dest_dir.join(".git");
+    if git_dir.exists() {
+        let _ = fs::remove_dir_all(git_dir);
+    }
+    
+    clear_cache();
+
+    Ok(())
+}
+

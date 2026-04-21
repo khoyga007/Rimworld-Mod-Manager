@@ -50,99 +50,117 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
   };
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, marginBottom: 24, color: "var(--color-accent)" }}>
-        Settings
-      </h2>
+    <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Settings</h1>
+        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Configure RimWorld executable and mod directories</p>
+      </div>
 
       {/* Game Directory */}
-      <section className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 18 }}>📂</span>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>RimWorld Game Directory</h3>
-        </div>
-        <p style={{ fontSize: 12, color: "var(--color-text-dim)", margin: "0 0 12px" }}>
-          Point this to your RimWorld installation folder (the one containing Data/, Mods/, and the game executable).
-        </p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            className="input-field"
-            value={paths?.game_dir || ""}
-            readOnly
-            placeholder="Not set — click Browse..."
-            style={{ flex: 1 }}
-          />
-          <button className="btn-primary" onClick={browseGameDir}>Browse</button>
-        </div>
-
-        {paths?.game_dir && (
-          <div style={{ marginTop: 12, fontSize: 12, color: "var(--color-success)" }}>
-            ✓ Directory set. Mods will be scanned from Data/, Mods/, and LinkNeverDie.Com-GSE/mods/.
+      <section className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255, 157, 0, 0.1)", color: "var(--color-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+            📂
           </div>
-        )}
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Game Directory</h3>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>Folder containing Data/, Mods/, and game executable</div>
+          </div>
+        </div>
+        
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ flex: 1, position: "relative" }}>
+            <input
+              className="input-field"
+              value={paths?.game_dir || ""}
+              readOnly
+              placeholder="Not set — click Browse..."
+              style={{ background: "rgba(0,0,0,0.2)", cursor: "default" }}
+            />
+            {paths?.game_dir && (
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-success)", fontSize: 14 }}>✓</span>
+            )}
+          </div>
+          <button className="btn-primary" onClick={browseGameDir}>Browse Folder</button>
+        </div>
       </section>
 
       {/* Executable */}
-      <section className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 18 }}>🎮</span>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>RimWorld Executable</h3>
+      <section className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(59, 130, 246, 0.1)", color: "var(--color-info)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+            🎮
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>RimWorld Executable</h3>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>Used for launching the game directly from the manager</div>
+          </div>
         </div>
-        <p style={{ fontSize: 12, color: "var(--color-text-dim)", margin: "0 0 12px" }}>
-          Used for the "Launch RimWorld" button. Point this to RimWorldWin64.exe or similar.
-        </p>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            className="input-field"
-            value={exePath}
-            readOnly
-            placeholder="Not set — click Browse..."
-            style={{ flex: 1 }}
-          />
-          <button className="btn-primary" onClick={browseExe}>Browse</button>
+        
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ flex: 1, position: "relative" }}>
+            <input
+              className="input-field"
+              value={exePath}
+              readOnly
+              placeholder="Not set — click Browse..."
+              style={{ background: "rgba(0,0,0,0.2)", cursor: "default" }}
+            />
+            {exePath && (
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-success)", fontSize: 14 }}>✓</span>
+            )}
+          </div>
+          <button className="btn-primary" onClick={browseExe}>Browse .exe</button>
         </div>
       </section>
 
-      {/* Config Info */}
-      <section className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 18 }}>📋</span>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Config Paths</h3>
-        </div>
-        <div style={{ fontSize: 12, color: "var(--color-text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
-          <div>
-            <span style={{ color: "var(--color-text-dim)" }}>ModsConfig.xml: </span>
-            <span
-              style={{ cursor: "pointer", textDecoration: "underline" }}
-              onClick={() => paths?.mods_config_path && invoke("open_path_or_url", { target: paths.mods_config_path })}
-            >
-              {paths?.mods_config_path || "N/A"}
-            </span>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        {/* Config Info */}
+        <section className="glass-card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255, 255, 255, 0.05)", color: "var(--color-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+              📋
+            </div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>System Paths</h3>
           </div>
-          <div>
-            <span style={{ color: "var(--color-text-dim)" }}>Config Dir: </span>
-            <span
-              style={{ cursor: "pointer", textDecoration: "underline" }}
-              onClick={() => paths?.config_dir && invoke("open_path_or_url", { target: paths.config_dir })}
-            >
-              {paths?.config_dir || "N/A"}
-            </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ background: "rgba(0,0,0,0.2)", padding: 12, borderRadius: 8, border: "1px solid var(--color-border)" }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>ModsConfig.xml</div>
+              <div 
+                style={{ fontSize: 13, color: "var(--color-accent)", cursor: "pointer", wordBreak: "break-all" }}
+                onClick={() => paths?.mods_config_path && invoke("open_path_or_url", { target: paths.mods_config_path })}
+                title="Open file location"
+              >
+                {paths?.mods_config_path || "N/A"}
+              </div>
+            </div>
+            <div style={{ background: "rgba(0,0,0,0.2)", padding: 12, borderRadius: 8, border: "1px solid var(--color-border)" }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Config Directory</div>
+              <div 
+                style={{ fontSize: 13, color: "var(--color-accent)", cursor: "pointer", wordBreak: "break-all" }}
+                onClick={() => paths?.config_dir && invoke("open_path_or_url", { target: paths.config_dir })}
+                title="Open directory"
+              >
+                {paths?.config_dir || "N/A"}
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* About */}
-      <section className="glass-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 18 }}>ℹ</span>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>About</h3>
-        </div>
-        <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: 0 }}>
-          RimWorld Mod Manager v0.1.0 — Built with Tauri + React.
-          <br />
-          Manages your colony's mods with love. 🏠
-        </p>
-      </section>
+        {/* About */}
+        <section className="glass-card" style={{ padding: 24, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, marginBottom: 16, boxShadow: "0 8px 16px rgba(0,0,0,0.2)" }}>
+            🚀
+          </div>
+          <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 4px", color: "var(--color-accent)" }}>RIMSORT Pro</h3>
+          <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 12 }}>v1.0.0-PRO</div>
+          <p style={{ fontSize: 13, color: "var(--color-text-dim)", margin: 0, lineHeight: 1.5 }}>
+            Built with Rust + Tauri + React.<br/>
+            Engineered for RimWorld modders.
+          </p>
+        </section>
+      </div>
     </div>
   );
 }

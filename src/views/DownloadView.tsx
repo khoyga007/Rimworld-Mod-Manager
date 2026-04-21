@@ -85,37 +85,46 @@ export default function DownloadView({ downloads, toast, onRefresh }: Props) {
   };
 
   return (
-    <div>
-      <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--color-accent)", marginBottom: 20 }}>
-        Download Mods
-      </h2>
+    <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Download Mods</h1>
+        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Download RimWorld mods directly from Steam Workshop</p>
+      </div>
 
-      {/* Input */}
-      <div className="glass-card" style={{ padding: 20, marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          Workshop ID or URL
+      {/* Input Form */}
+      <div className="glass-card" style={{ padding: 24, marginBottom: 32, borderTop: "4px solid var(--color-info)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(59, 130, 246, 0.1)", color: "var(--color-info)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+            🔗
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Workshop IDs or URLs</h3>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>
+              Paste one or more IDs or URLs (comma/newline separated)
+            </div>
+          </div>
         </div>
-        <p style={{ fontSize: 12, color: "var(--color-text-dim)", margin: "0 0 12px" }}>
-          Paste one or more Steam Workshop URLs or IDs (separated by commas, spaces, or newlines).
-        </p>
+
         <textarea
           className="input-field"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={"https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077\n2009463077, 1874644848"}
-          rows={3}
-          style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 12 }}
+          rows={4}
+          style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 13, marginBottom: 16, background: "rgba(0,0,0,0.2)" }}
         />
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button className="btn-primary" onClick={handleDownload} disabled={busy || !input.trim()}>
-            ⬇ Download Mod(s)
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button className="btn-primary" onClick={handleDownload} disabled={busy || !input.trim()} style={{ padding: "0 24px", height: 40 }}>
+            ⬇ Download Mods
           </button>
-          <button className="btn-secondary" onClick={handleCollection} disabled={busy || !input.trim()}>
+          <button className="btn-secondary" onClick={handleCollection} disabled={busy || !input.trim()} style={{ height: 40 }}>
             📦 Import Collection
           </button>
+          <div style={{ flex: 1 }} />
           <button
             className="btn-secondary"
-            style={{ marginLeft: "auto" }}
             onClick={async () => {
               try {
                 await invoke("open_path_or_url", { target: "https://steamcommunity.com/app/294100/workshop/" });
@@ -123,68 +132,85 @@ export default function DownloadView({ downloads, toast, onRefresh }: Props) {
                 window.open("https://steamcommunity.com/app/294100/workshop/", "_blank");
               }
             }}
+            style={{ height: 40, background: "rgba(255,255,255,0.05)" }}
           >
-            🌐 Browse Workshop
+            🌐 Browse Steam
           </button>
         </div>
       </div>
 
       {/* Download Queue */}
-      {downloadEntries.length > 0 && (
-        <div className="glass-card" style={{ padding: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-            Downloads ({downloadEntries.length})
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {downloadEntries.map(([id, dl]) => (
-              <div
-                key={id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "8px 12px",
-                  background: "var(--color-bg)",
-                  borderRadius: 6,
-                  borderLeft: `3px solid ${statusColor(dl.status)}`,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>
-                    Workshop #{id}
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>
+          Download Queue {downloadEntries.length > 0 ? `(${downloadEntries.length})` : ""}
+        </h3>
+        
+        {downloadEntries.length === 0 ? (
+          <div className="glass-card" style={{ textAlign: "center", padding: "60px 40px", borderStyle: "dashed" }}>
+            <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.2 }}>💤</div>
+            <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>Queue is Empty</h3>
+            <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Enter IDs above to start downloading mods.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {downloadEntries.map(([id, dl]) => {
+              const isError = dl.status === "error";
+              const isDone = dl.status === "done";
+              const isActive = dl.status === "downloading" || dl.status === "installing";
+              
+              return (
+                <div
+                  key={id}
+                  className="glass-card"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "16px",
+                    background: isError ? "rgba(239, 68, 68, 0.05)" : isDone ? "rgba(16, 185, 129, 0.05)" : "var(--color-bg-card)",
+                    borderLeft: `4px solid ${statusColor(dl.status)}`,
+                    transition: "var(--transition)",
+                  }}
+                >
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                    {isDone ? "✓" : isError ? "✕" : isActive ? <div style={{ width: 20, height: 20, border: `2px solid ${statusColor(dl.status)}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} /> : "⏳"}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--color-text-dim)", marginTop: 2 }}>
-                    {dl.message}
+                  
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text)", fontFamily: "var(--font-mono)" }}>
+                        {id}
+                      </span>
+                      <span className="badge" style={{ 
+                        background: `rgba(${isDone ? "16,185,129" : isError ? "239,68,68" : isActive ? "59,130,246" : "255,255,255"}, 0.1)`, 
+                        color: statusColor(dl.status),
+                        borderColor: `rgba(${isDone ? "16,185,129" : isError ? "239,68,68" : isActive ? "59,130,246" : "255,255,255"}, 0.2)`
+                      }}>
+                        {dl.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: isError ? "var(--color-danger)" : "var(--color-text-dim)" }}>
+                      {dl.message || (isDone ? "Download completed successfully" : isActive ? "Working..." : "Waiting in queue")}
+                    </div>
                   </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {dl.status !== "done" && dl.status !== "error" && (
-                    <div style={{
-                      width: 60, height: 4, background: "var(--color-bg-card)",
-                      borderRadius: 2, overflow: "hidden",
-                    }}>
-                      <div style={{
-                        width: `${dl.progress}%`, height: "100%",
-                        background: "var(--color-accent)",
-                        transition: "width 0.3s ease",
-                      }} />
+                  
+                  {isActive && (
+                    <div style={{ width: 100, marginLeft: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-info)", marginBottom: 4, fontWeight: 600 }}>
+                        <span>Progress</span>
+                        <span>{Math.round(dl.progress)}%</span>
+                      </div>
+                      <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.3)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ width: `${dl.progress}%`, height: "100%", background: "var(--color-info)", transition: "width 0.2s ease", borderRadius: 3 }} />
+                      </div>
                     </div>
                   )}
-                  <span style={{
-                    fontSize: 11, fontWeight: 600,
-                    color: statusColor(dl.status),
-                    textTransform: "uppercase",
-                    minWidth: 70,
-                    textAlign: "right",
-                  }}>
-                    {dl.status}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

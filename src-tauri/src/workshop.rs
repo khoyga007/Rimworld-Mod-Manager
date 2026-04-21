@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-const STELLARIS_APP_ID: &str = "294100";
+const RIMWORLD_APP_ID: &str = "294100";
+const WORKSHOP_API_URL: &str = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkshopMeta {
@@ -66,7 +67,7 @@ pub async fn fetch_metas(ids: &[String]) -> Result<Vec<(String, WorkshopMeta)>> 
     }
 
     let res = client
-        .post("https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
+        .post(WORKSHOP_API_URL)
         .form(&form)
         .send()
         .await?
@@ -106,7 +107,7 @@ pub async fn fetch_meta(workshop_id: &str) -> Result<WorkshopMeta> {
 
     let form = [("itemcount", "1"), ("publishedfileids[0]", workshop_id)];
     let res = client
-        .post("https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
+        .post(WORKSHOP_API_URL)
         .form(&form)
         .send()
         .await?
@@ -279,7 +280,7 @@ where
         .build()?;
 
     on_progress(30, "steamworkshop.download: requesting...");
-    let form = [("item", workshop_id), ("app", STELLARIS_APP_ID)];
+    let form = [("item", workshop_id), ("app", RIMWORLD_APP_ID)];
     let html = client
         .post("https://steamworkshop.download/online/steamonline.php")
         .header("Referer", "https://steamworkshop.download/")
@@ -503,7 +504,7 @@ fn has_mod_content(p: &Path) -> bool {
     p.join("About").join("About.xml").exists()
 }
 
-fn build_about(folder: &Path, meta: &WorkshopMeta, workshop_id: &str) -> crate::about::ModAbout {
+fn build_about(folder: &Path, meta: &WorkshopMeta, _workshop_id: &str) -> crate::about::ModAbout {
     let inner = folder.join("About").join("About.xml");
     let mut d = if inner.exists() {
         let txt = std::fs::read_to_string(&inner).unwrap_or_default();

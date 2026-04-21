@@ -93,18 +93,21 @@ export default function LogsView() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--color-accent)", margin: 0 }}>
-          Game Logs
-        </h2>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={scrollToBottom} style={{ fontSize: 12, padding: "6px 10px" }}>⬇ Bottom</button>
-          <button className="btn-secondary" onClick={loadLog}>🔄 Refresh</button>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Game Logs</h1>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Real-time terminal output and error analysis</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {log && <span style={{ fontSize: 11, color: "var(--color-text-dim)", marginRight: 8, fontFamily: "var(--font-mono)" }}>{log.path}</span>}
+          <button className="btn-secondary" onClick={scrollToBottom} style={{ fontSize: 13, padding: "6px 12px" }}>⬇ Bottom</button>
+          <button className="btn-secondary" onClick={loadLog} style={{ fontSize: 13, padding: "6px 12px" }}>🔄 Refresh</button>
           <button
             className={tailing ? "btn-danger" : "btn-primary"}
             onClick={toggleTail}
+            style={{ fontSize: 13, padding: "6px 16px" }}
           >
             {tailing ? "⏹ Stop Tail" : "▶ Live Tail"}
           </button>
@@ -112,48 +115,54 @@ export default function LogsView() {
       </div>
 
       {/* Toolbar: Filters + Search */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {filterButtons.map((btn) => (
-          <button
-            key={btn.id}
-            onClick={() => setFilter(btn.id)}
-            style={{
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: filter === btn.id ? 600 : 400,
-              background: filter === btn.id ? "var(--color-bg-active)" : "var(--color-bg-card)",
-              border: filter === btn.id ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
-              borderRadius: 6,
-              color: filter === btn.id ? "var(--color-accent)" : "var(--color-text-muted)",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <span style={{ fontSize: 11 }}>{btn.icon}</span>
-            {btn.label}
-          </button>
-        ))}
+      <div className="glass-card" style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center", padding: "12px 16px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          {filterButtons.map((btn) => (
+            <button
+              key={btn.id}
+              onClick={() => setFilter(btn.id)}
+              style={{
+                padding: "6px 14px",
+                fontSize: 13,
+                fontWeight: filter === btn.id ? 600 : 500,
+                background: filter === btn.id ? "var(--color-bg-active)" : "rgba(0,0,0,0.2)",
+                border: filter === btn.id ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+                borderRadius: 8,
+                color: filter === btn.id ? "var(--color-accent)" : "var(--color-text)",
+                cursor: "pointer",
+                transition: "var(--transition)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>{btn.icon}</span>
+              {btn.label}
+            </button>
+          ))}
+        </div>
 
-        <input
-          className="input-field"
-          placeholder="Search logs..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ marginLeft: "auto", width: 220, fontSize: 12, padding: "5px 10px" }}
-        />
+        <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.5 }}>🔍</span>
+          <input
+            className="input-field"
+            placeholder="Search logs..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: "100%", paddingLeft: 36, background: "rgba(0,0,0,0.2)" }}
+          />
+        </div>
       </div>
 
       {/* Stats bar */}
-      <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: 11, color: "var(--color-text-dim)" }}>
-        {log && <span>📄 {log.path}</span>}
-        <span style={{ marginLeft: "auto" }}>
-          Showing {filteredLines.length} / {stats.total} lines
-          {stats.errors > 0 && <span style={{ color: "var(--color-danger)", marginLeft: 8 }}>● {stats.errors} errors</span>}
-          {stats.warnings > 0 && <span style={{ color: "var(--color-warning)", marginLeft: 8 }}>● {stats.warnings} warnings</span>}
+      <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 12, color: "var(--color-text-dim)", padding: "0 8px" }}>
+        <span style={{ fontWeight: 600, color: "var(--color-text)" }}>
+          Showing {filteredLines.length} of {stats.total} lines
         </span>
+        <div style={{ display: "flex", gap: 16, marginLeft: "auto" }}>
+          {stats.errors > 0 && <span style={{ color: "var(--color-danger)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-danger)"}}/> {stats.errors} Errors</span>}
+          {stats.warnings > 0 && <span style={{ color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-warning)"}}/> {stats.warnings} Warnings</span>}
+        </div>
       </div>
 
       {/* Log content */}
@@ -162,37 +171,51 @@ export default function LogsView() {
         style={{
           flex: 1,
           overflow: "auto",
-          padding: 12,
+          padding: 16,
           fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          lineHeight: 1.7,
+          fontSize: 12,
+          lineHeight: 1.6,
           whiteSpace: "pre-wrap",
           wordBreak: "break-all",
+          background: "rgba(10, 10, 15, 0.7)",
+          border: "1px solid var(--color-border)",
+          boxShadow: "inset 0 2px 10px rgba(0,0,0,0.2)",
         }}
       >
         {loading ? (
-          <span style={{ color: "var(--color-text-dim)" }}>Loading log...</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--color-text-dim)", padding: 20 }}>
+            <div style={{ width: 20, height: 20, border: "2px solid var(--color-border)", borderTop: "2px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+            Loading log file...
+          </div>
         ) : filteredLines.length > 0 ? (
           <>
             {filteredLines.map((line) => (
-              <div key={line.num} style={{ color: levelColors[line.level], minHeight: "1.3em" }}>
-                <span style={{ color: "var(--color-text-dim)", marginRight: 8, userSelect: "none", display: "inline-block", width: 40, textAlign: "right" }}>
+              <div key={line.num} style={{ 
+                color: levelColors[line.level], 
+                padding: "2px 0",
+                display: "flex",
+                background: line.level === "error" ? "rgba(239, 68, 68, 0.05)" : line.level === "warning" ? "rgba(245, 158, 11, 0.05)" : "transparent",
+              }}>
+                <span style={{ color: "var(--color-text-dim)", opacity: 0.5, marginRight: 16, userSelect: "none", display: "inline-block", width: 44, textAlign: "right", flexShrink: 0 }}>
                   {line.num}
                 </span>
-                {line.level === "error" && <span style={{ color: "var(--color-danger)", marginRight: 4, fontWeight: 700 }}>✕</span>}
-                {line.level === "warning" && <span style={{ color: "var(--color-warning)", marginRight: 4 }}>⚠</span>}
-                {line.text}
+                <span style={{ flex: 1 }}>
+                  {line.level === "error" && <span style={{ color: "var(--color-danger)", marginRight: 8, fontWeight: 700 }}>✕</span>}
+                  {line.level === "warning" && <span style={{ color: "var(--color-warning)", marginRight: 8 }}>⚠</span>}
+                  {line.text}
+                </span>
               </div>
             ))}
-            <div ref={bottomRef} />
+            <div ref={bottomRef} style={{ height: 1 }} />
           </>
         ) : (
-          <span style={{ color: "var(--color-text-dim)" }}>
+          <div style={{ textAlign: "center", padding: 60, color: "var(--color-text-dim)" }}>
+            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.2 }}>📄</div>
             {lines.length === 0
               ? "No log data found. Launch RimWorld to generate logs."
-              : "No lines match current filter."
+              : "No lines match the current filter and search."
             }
-          </span>
+          </div>
         )}
       </div>
     </div>

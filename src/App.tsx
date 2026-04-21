@@ -84,7 +84,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+    <div className="app-container">
       <Sidebar
         currentView={view}
         onNavigate={setView}
@@ -93,25 +93,37 @@ export default function App() {
         gameDirSet={!!paths?.game_dir}
       />
 
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", position: "relative", overflow: "hidden" }}>
         {/* Top bar */}
         <header style={{
-          height: 52,
+          height: 64,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 20px",
+          padding: "0 32px",
           borderBottom: "1px solid var(--color-border)",
-          background: "var(--color-bg-elevated)",
+          background: "rgba(10, 11, 13, 0.8)",
+          backdropFilter: "blur(20px)",
           flexShrink: 0,
+          zIndex: 10,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              background: "rgba(255,255,255,0.03)",
+              padding: "6px 12px",
+              borderRadius: "20px",
+              border: "1px solid var(--color-border)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}>
               {paths?.game_dir
-                ? <span>📂 {paths.game_dir}</span>
-                : <span style={{ color: "var(--color-warning)" }}>⚠ Game directory not set — go to Settings</span>
+                ? <><span className="pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--color-success)" }}></span> 📂 {paths.game_dir}</>
+                : <><span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--color-warning)" }}></span> ⚠ Path not set</>
               }
-            </span>
+            </div>
           </div>
           <button
             className="btn-primary"
@@ -120,33 +132,40 @@ export default function App() {
               catch (e: any) { toast(e?.toString() || "Launch failed", "error"); }
             }}
           >
-            ▶ Launch RimWorld
+            <span style={{ fontSize: 16 }}>▶</span> Launch RimWorld
           </button>
         </header>
 
         {/* View content */}
-        <div style={{ flex: 1, overflow: "auto", padding: 20 }} className="view-enter" key={view}>
-          {error && !paths?.game_dir && view !== "settings" && (
-            <div style={{
-              background: "var(--color-bg-card)",
-              border: "1px solid var(--color-warning)",
-              borderRadius: 8,
-              padding: 16,
-              marginBottom: 16,
-              fontSize: 13,
-              color: "var(--color-warning)",
-            }}>
-              ⚠ Please set your RimWorld game directory in <button onClick={() => setView("settings")} style={{ color: "var(--color-accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Settings</button> to load mods.
-            </div>
-          )}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <div className="main-view animate-slide-up" key={view}>
+            {error && !paths?.game_dir && view !== "settings" && (
+              <div className="glass-card" style={{
+                padding: "20px 24px",
+                marginBottom: 32,
+                borderLeft: "4px solid var(--color-warning)",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+              }}>
+                <span style={{ fontSize: 24 }}>⚠</span>
+                <div>
+                  <div style={{ fontWeight: 600, color: "var(--color-warning)", marginBottom: 2 }}>Initial Setup Required</div>
+                  <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                    Please set your RimWorld game directory in <button onClick={() => setView("settings")} style={{ color: "var(--color-accent)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Settings</button> to enable mod management.
+                  </div>
+                </div>
+              </div>
+            )}
 
-          {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
-          {view === "download" && <DownloadView downloads={downloads} toast={toast} onRefresh={refreshMods} />}
-          {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
-          {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
-          {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
-          {view === "logs" && <LogsView />}
-          {view === "settings" && <SettingsView paths={paths} onPathsChange={(p) => { setPaths(p); refreshMods(); }} toast={toast} />}
+            {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
+            {view === "download" && <DownloadView downloads={downloads} toast={toast} onRefresh={refreshMods} />}
+            {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
+            {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
+            {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
+            {view === "logs" && <LogsView />}
+            {view === "settings" && <SettingsView paths={paths} onPathsChange={(p) => { setPaths(p); refreshMods(); }} toast={toast} />}
+          </div>
         </div>
       </main>
 

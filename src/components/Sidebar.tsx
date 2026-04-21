@@ -22,84 +22,62 @@ const NAV: { id: View; icon: string; label: string }[] = [
 
 export default function Sidebar({ currentView, onNavigate, modCount, enabledCount, gameDirSet }: Props) {
   return (
-    <aside style={{
-      width: 200,
-      background: "var(--color-sidebar)",
-      borderRight: "1px solid var(--color-border)",
-      display: "flex",
-      flexDirection: "column",
-      flexShrink: 0,
-      height: "100vh",
-    }}>
+    <aside className="sidebar">
       {/* Brand */}
-      <div style={{
-        padding: "20px 16px 16px",
-        borderBottom: "1px solid var(--color-border)",
-      }}>
+      <div style={{ padding: "0 16px 24px" }}>
         <div style={{
           fontFamily: "var(--font-display)",
-          fontSize: 16,
+          fontSize: 22,
           fontWeight: 700,
-          color: "var(--color-accent)",
-          letterSpacing: "0.5px",
+          color: "var(--color-text)",
+          letterSpacing: "-0.03em",
         }}>
-          RimWorld
+          RIM<span style={{ color: "var(--color-accent)" }}>SORT</span>
         </div>
         <div style={{
           fontSize: 11,
           color: "var(--color-text-dim)",
           marginTop: 2,
           textTransform: "uppercase",
-          letterSpacing: "1px",
+          letterSpacing: "0.1em",
+          fontWeight: 600
         }}>
-          Mod Manager
+          Mod Manager Pro
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--color-border)",
-        display: "flex",
-        gap: 12,
+      {/* Stats Summary */}
+      <div className="glass-card" style={{ 
+        margin: "0 8px 24px", 
+        padding: "16px", 
+        display: "flex", 
+        justifyContent: "space-around",
+        background: "rgba(255,255,255,0.02)"
       }}>
         <Stat label="Total" value={modCount} />
+        <div style={{ width: 1, background: "var(--color-border)", margin: "4px 0" }}></div>
         <Stat label="Active" value={enabledCount} color="var(--color-success)" />
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
+      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         {NAV.map((item) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 16px",
-              border: "none",
-              background: currentView === item.id ? "var(--color-sidebar-active)" : "transparent",
-              color: currentView === item.id ? "var(--color-accent)" : "var(--color-text-muted)",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: currentView === item.id ? 600 : 400,
+            className={`nav-item ${currentView === item.id ? "active" : ""}`}
+            style={{ 
+              background: "none", 
+              border: "none", 
+              width: "100%", 
               textAlign: "left",
-              transition: "all 0.15s ease",
-              borderLeft: currentView === item.id ? "2px solid var(--color-accent)" : "2px solid transparent",
-            }}
-            onMouseEnter={(e) => {
-              if (currentView !== item.id) e.currentTarget.style.background = "var(--color-sidebar-hover)";
-            }}
-            onMouseLeave={(e) => {
-              if (currentView !== item.id) e.currentTarget.style.background = "transparent";
+              fontFamily: "inherit"
             }}
           >
-            <span style={{ fontSize: 15 }}>{item.icon}</span>
-            {item.label}
+            <span style={{ fontSize: 18, opacity: currentView === item.id ? 1 : 0.7 }}>{item.icon}</span>
+            <span style={{ flex: 1 }}>{item.label}</span>
             {item.id === "settings" && !gameDirSet && (
-              <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "var(--color-warning)" }} />
+              <span className="pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-warning)" }} />
             )}
           </button>
         ))}
@@ -107,12 +85,15 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
 
       {/* Footer */}
       <div style={{
-        padding: "12px 16px",
-        borderTop: "1px solid var(--color-border)",
-        fontSize: 10,
+        padding: "16px",
+        fontSize: 11,
         color: "var(--color-text-dim)",
+        textAlign: "center",
+        borderTop: "1px solid var(--color-border)",
+        marginTop: "auto"
       }}>
-        v0.1.0 • Made for colonists
+        <div style={{ fontWeight: 600, color: "var(--color-text-muted)" }}>v1.0.0-PRO</div>
+        <div>Ready for A17+</div>
       </div>
     </aside>
   );

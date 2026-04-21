@@ -2,6 +2,42 @@ use crate::mods::ModInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+#[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
+pub struct RimPyDatabase {
+    pub timestamp: Option<i64>,
+    pub rules: HashMap<String, RimPyRule>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct RimPyRule {
+    #[serde(rename = "loadAfter")]
+    pub load_after: Option<HashMap<String, serde_json::Value>>,
+    #[serde(rename = "loadBefore")]
+    pub load_before: Option<HashMap<String, serde_json::Value>>,
+    #[serde(rename = "incompatibleWith")]
+    pub incompatible_with: Option<HashMap<String, serde_json::Value>>,
+    #[serde(rename = "loadBottom")]
+    pub load_bottom: Option<FlagValue>,
+    #[serde(rename = "loadTop")]
+    pub load_top: Option<FlagValue>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct FlagValue {
+    pub value: Option<bool>,
+}
+
+pub fn load_rimpy_rules() -> HashMap<String, RimPyRule> {
+    let path = crate::paths::config_dir().join("communityRules.json");
+    if let Ok(txt) = std::fs::read_to_string(path) {
+        if let Ok(db) = serde_json::from_str::<RimPyDatabase>(&txt) {
+            return db.rules;
+        }
+    }
+    HashMap::new()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Bucket {
     Harmony,        // Always #1
@@ -138,8 +174,18 @@ pub fn sort_mods(mods: &[ModInfo]) -> Vec<String> {
     let mut deps: HashMap<String, Vec<String>> = HashMap::new();
     let mut in_degree: HashMap<String, usize> = enabled.iter().map(|m| (m.id.clone(), 0)).collect();
 
+    let rimpy = load_rimpy_rules();
+
     for m in &enabled {
-        for dep in m.dependencies.iter().chain(m.load_after.iter()) {
+        let mut la = m.load_after.clone();
+        let mut lb = m.load_before.clone();
+        
+        if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
+            if let Some(r_la) = &rule.load_after { la.extend(r_la.keys().cloned()); }
+            if let Some(r_lb) = &rule.load_before { lb.extend(r_lb.keys().cloned()); }
+        }
+
+        for dep in m.dependencies.iter().chain(la.iter()) {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {
@@ -148,7 +194,7 @@ pub fn sort_mods(mods: &[ModInfo]) -> Vec<String> {
                 *in_degree.entry(m.id.clone()).or_insert(0) += 1;
             }
         }
-        for dep in &m.load_before {
+        for dep in &lb {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {
@@ -159,8 +205,16 @@ pub fn sort_mods(mods: &[ModInfo]) -> Vec<String> {
         }
     }
 
-    let bucket_of: HashMap<String, Bucket> = enabled.iter().map(|m| (m.id.clone(), classify(m))).collect();
+    let bucket_of: HashMap<String, Bucket> = enabled.iter().map(|m| {
+        let mut b = classify(m);
+        if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
+            if rule.load_bottom.as_ref().and_then(|f| f.value).unwrap_or(false) { b = Bucket::Performance; }
+            if rule.load_top.as_ref().and_then(|f| f.value).unwrap_or(false) { b = Bucket::Core; }
+        }
+        (m.id.clone(), b)
+    }).collect();
     let name_of: HashMap<String, String> = enabled.iter().map(|m| (m.id.clone(), m.name.to_lowercase())).collect();
+    let order_of: HashMap<String, i32> = enabled.iter().map(|m| (m.id.clone(), m.load_order)).collect();
 
     let mut ready: Vec<String> = in_degree.iter().filter(|(_, &d)| d == 0).map(|(id, _)| id.clone()).collect();
     let mut result_ids: Vec<String> = Vec::with_capacity(enabled.len());
@@ -181,7 +235,13 @@ pub fn sort_mods(mods: &[ModInfo]) -> Vec<String> {
                 if wa != wb { return wa.cmp(&wb); }
             }
             
-            // 3. Alphabetical fallback
+            // 3. User original order fallback
+            let oa = order_of.get(a).copied().unwrap_or(i32::MAX);
+            let ob = order_of.get(b).copied().unwrap_or(i32::MAX);
+            let original_order_cmp = oa.cmp(&ob);
+            if original_order_cmp != std::cmp::Ordering::Equal { return original_order_cmp; }
+
+            // 4. Alphabetical fallback
             name_of.get(a).cmp(&name_of.get(b))
         });
         
@@ -219,6 +279,7 @@ pub enum LoadOrderIssue {
     MissingDependency { mod_id: String, mod_name: String, missing: String },
     Cycle { mod_ids: Vec<String>, mod_names: Vec<String> },
     OutOfOrder { mod_id: String, mod_name: String, current_index: usize, suggested_index: usize },
+    Incompatible { mod_id: String, mod_name: String, conflicting_id: String, conflicting_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,7 +310,7 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
 
     let mut issues = Vec::new();
     let name_of: HashMap<String, String> = enabled.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
-    let bucket_of: HashMap<String, Bucket> = enabled.iter().map(|m| (m.id.clone(), classify(m))).collect();
+    let rimpy = load_rimpy_rules();
 
     for m in &enabled {
         for dep in &m.dependencies {
@@ -263,14 +324,44 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
                 });
             }
         }
+        
+        // Incompatibility detection
+        let mut incompats = m.incompatible_with.clone();
+        if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
+            if let Some(r_inc) = &rule.incompatible_with {
+                incompats.extend(r_inc.keys().cloned());
+            }
+        }
+        for inc in &incompats {
+            let inc_key = inc.to_lowercase();
+            let norm_key = normalize_name(inc);
+            if let Some(inc_id) = id_lookup.get(&inc_key).or_else(|| id_lookup.get(&norm_key)) {
+                let inc_name = name_of.get(inc_id).cloned().unwrap_or_else(|| inc_id.clone());
+                issues.push(LoadOrderIssue::Incompatible {
+                    mod_id: m.id.clone(),
+                    mod_name: m.name.clone(),
+                    conflicting_id: inc_id.clone(),
+                    conflicting_name: inc_name,
+                });
+            }
+        }
     }
 
     // Cycle detection
     let mut in_degree: HashMap<String, usize> = HashMap::new();
     let mut deps: HashMap<String, Vec<String>> = HashMap::new();
+
     for m in &enabled {
         in_degree.entry(m.id.clone()).or_insert(0);
-        for dep in m.dependencies.iter().chain(m.load_after.iter()) {
+        
+        let mut la = m.load_after.clone();
+        let mut lb = m.load_before.clone();
+        if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
+            if let Some(r_la) = &rule.load_after { la.extend(r_la.keys().cloned()); }
+            if let Some(r_lb) = &rule.load_before { lb.extend(r_lb.keys().cloned()); }
+        }
+
+        for dep in m.dependencies.iter().chain(la.iter()) {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {
@@ -279,7 +370,7 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
                 *in_degree.entry(m.id.clone()).or_insert(0) += 1;
             }
         }
-        for dep in &m.load_before {
+        for dep in &lb {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {
@@ -325,6 +416,15 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
         c
     };
     let current_index_of: HashMap<String, usize> = current_sorted.iter().enumerate().map(|(i, m)| (m.id.clone(), i)).collect();
+
+    let bucket_of: HashMap<String, Bucket> = enabled.iter().map(|m| {
+        let mut b = classify(m);
+        if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
+            if rule.load_bottom.as_ref().and_then(|f| f.value).unwrap_or(false) { b = Bucket::Performance; }
+            if rule.load_top.as_ref().and_then(|f| f.value).unwrap_or(false) { b = Bucket::Core; }
+        }
+        (m.id.clone(), b)
+    }).collect();
 
     let plan = suggested.iter().enumerate().map(|(i, id)| {
         let b = bucket_of.get(id).copied().unwrap_or(Bucket::General);

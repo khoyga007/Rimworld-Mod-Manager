@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-const STELLARIS_APP_ID: &str = "294100";
+const RIMWORLD_APP_ID: &str = "294100";
 const STEAMCMD_URL: &str = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
 
 pub fn steamcmd_dir() -> PathBuf {
@@ -83,7 +83,7 @@ where
         .join("steamapps")
         .join("workshop")
         .join("content")
-        .join(STELLARIS_APP_ID)
+        .join(RIMWORLD_APP_ID)
         .join(workshop_id);
     if content_dir.exists() {
         std::fs::remove_dir_all(&content_dir).ok();
@@ -101,7 +101,7 @@ where
         "+login".to_string(),
         "anonymous".to_string(),
         "+workshop_download_item".to_string(),
-        STELLARIS_APP_ID.to_string(),
+        RIMWORLD_APP_ID.to_string(),
         workshop_id.to_string(),
         "+quit".to_string(),
     ];
@@ -213,7 +213,7 @@ where
             .join("steamapps")
             .join("workshop")
             .join("content")
-            .join(STELLARIS_APP_ID)
+            .join(RIMWORLD_APP_ID)
             .join(id);
         if content_dir.exists() {
             std::fs::remove_dir_all(&content_dir).ok();
@@ -233,7 +233,7 @@ where
     ];
     for id in &ids_owned {
         args.push("+workshop_download_item".into());
-        args.push(STELLARIS_APP_ID.into());
+        args.push(RIMWORLD_APP_ID.into());
         args.push(id.clone());
     }
     args.push("+quit".into());
@@ -289,7 +289,7 @@ where
             .join("steamapps")
             .join("workshop")
             .join("content")
-            .join(STELLARIS_APP_ID)
+            .join(RIMWORLD_APP_ID)
             .join(id);
         if content_dir.exists() {
             out.insert(id.clone(), Ok(content_dir));

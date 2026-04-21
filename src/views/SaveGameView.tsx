@@ -64,146 +64,143 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--color-accent)", margin: 0 }}>
-          Save Games
-        </h2>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={loadSaves}>🔄 Refresh</button>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Save Games</h1>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Analyze save files to find missing mods or check compatibility</p>
+        </div>
+        <div style={{ textAlign: "right", display: "flex", alignItems: "flex-end", gap: 12 }}>
+          <button className="btn-secondary" onClick={loadSaves} title="Refresh Saves">🔄 Refresh</button>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{saves.length}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Saves Found</div>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "var(--color-text-dim)" }}>
-          <div style={{ width: 28, height: 28, border: "3px solid var(--color-border)", borderTop: "3px solid var(--color-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-          Scanning saves...
+        <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
+          <div style={{ width: 40, height: 40, border: "4px solid var(--color-border)", borderTop: "4px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite", margin: "0 auto 20px" }} />
+          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>Scanning Saves...</h3>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Reading save files from your RimWorld directory.</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : saves.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 60, color: "var(--color-text-dim)" }}>
-          <div style={{ fontSize: 42, marginBottom: 12 }}>🗺️</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-muted)", marginBottom: 4 }}>No save games found</div>
-          <div style={{ fontSize: 12 }}>Start a colony in RimWorld to create save files.</div>
+        <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
+          <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>🗺️</div>
+          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>No Save Games Found</h3>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Start a colony in RimWorld to create save files.</p>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 16, flex: 1, overflow: "hidden" }}>
+        <div style={{ display: "flex", gap: 24, flex: 1, overflow: "hidden" }}>
           {/* Save list */}
-          <div style={{ width: 340, flexShrink: 0, overflow: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ width: 340, flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 8 }}>
             {saves.map((save) => (
-              <button
+              <div
                 key={save.file_name}
                 onClick={() => analyzeSave(save.file_name)}
+                className="glass-card"
                 style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: 14,
-                  background: selectedSave === save.file_name ? "var(--color-bg-active)" : "var(--color-bg-card)",
-                  border: selectedSave === save.file_name ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
-                  borderRadius: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  padding: "16px",
                   cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  color: "var(--color-text)",
-                }}
-                onMouseEnter={(e) => {
-                  if (selectedSave !== save.file_name) e.currentTarget.style.background = "var(--color-bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (selectedSave !== save.file_name) e.currentTarget.style.background = "var(--color-bg-card)";
+                  background: selectedSave === save.file_name ? "var(--color-accent-glow)" : "var(--color-bg-card)",
+                  borderLeft: selectedSave === save.file_name ? "4px solid var(--color-accent)" : "4px solid transparent",
+                  transform: selectedSave === save.file_name ? "scale(1.01)" : "none",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 18 }}>🏰</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {save.colony_name || save.file_name.replace(".rws", "")}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", marginTop: 2, display: "flex", gap: 8 }}>
-                      <span>{save.mod_ids.length} mods</span>
-                      <span>•</span>
-                      <span>{formatSize(save.file_size)}</span>
-                      {save.game_version && (
-                        <>
-                          <span>•</span>
-                          <span>v{save.game_version.split(" ")[0]}</span>
-                        </>
-                      )}
-                    </div>
+                <div style={{ width: 40, height: 40, borderRadius: 8, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                  🏰
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: selectedSave === save.file_name ? "#fff" : "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 4 }}>
+                    {save.colony_name || save.file_name.replace(".rws", "")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--color-text-dim)", display: "flex", gap: 8 }}>
+                    <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{save.mod_ids.length} mods</span>
+                    <span>•</span>
+                    <span>{formatSize(save.file_size)}</span>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
           {/* Analysis panel */}
-          <div style={{ flex: 1, overflow: "auto" }}>
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
             {analyzing ? (
-              <div className="glass-card" style={{ padding: 40, textAlign: "center", color: "var(--color-text-dim)" }}>
-                <div style={{ width: 28, height: 28, border: "3px solid var(--color-border)", borderTop: "3px solid var(--color-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-                Analyzing save file...
+              <div className="glass-card" style={{ padding: 60, textAlign: "center" }}>
+                <div style={{ width: 40, height: 40, border: "4px solid var(--color-border)", borderTop: "4px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite", margin: "0 auto 20px" }} />
+                <h3 style={{ color: "var(--color-text-muted)" }}>Analyzing Save File...</h3>
               </div>
             ) : analysis ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="animate-slide-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 {/* Save info header */}
-                <div className="glass-card" style={{ padding: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ fontSize: 32 }}>🏰</div>
+                <div className="glass-card" style={{ padding: 24 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(255, 157, 0, 0.1)", color: "var(--color-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>
+                      🏰
+                    </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "var(--font-display)", color: "var(--color-accent)" }}>
+                      <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px" }}>
                         {analysis.save.colony_name || analysis.save.file_name}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                        {analysis.save.game_version && <span>🎮 {analysis.save.game_version}</span>}
-                        {analysis.save.seed && <span>🌱 Seed: {analysis.save.seed}</span>}
-                        <span>📦 {analysis.save.mod_ids.length} mods</span>
-                        <span>💾 {formatSize(analysis.save.file_size)}</span>
+                      </h2>
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                        {analysis.save.game_version && <span className="badge">🎮 {analysis.save.game_version}</span>}
+                        {analysis.save.seed && <span className="badge">🌱 Seed: {analysis.save.seed}</span>}
+                        <span className="badge">💾 {formatSize(analysis.save.file_size)}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <div className="glass-card" style={{ padding: 14, textAlign: "center" }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text)" }}>{analysis.save.mod_ids.length}</div>
-                    <div style={{ fontSize: 10, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Mods</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                  <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: "4px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: "var(--color-text)", marginBottom: 4 }}>{analysis.save.mod_ids.length}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Total Mods</div>
                   </div>
-                  <div className="glass-card" style={{ padding: 14, textAlign: "center" }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-success)" }}>{analysis.present_mods.length}</div>
-                    <div style={{ fontSize: 10, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Present</div>
+                  <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: "4px solid var(--color-success)", background: "linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, transparent 100%)" }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: "var(--color-success)", marginBottom: 4 }}>{analysis.present_mods.length}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Present</div>
                   </div>
-                  <div className="glass-card" style={{ padding: 14, textAlign: "center" }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: analysis.missing_mods.length > 0 ? "var(--color-danger)" : "var(--color-success)" }}>
+                  <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: analysis.missing_mods.length > 0 ? "4px solid var(--color-danger)" : "4px solid var(--color-border)", background: analysis.missing_mods.length > 0 ? "linear-gradient(180deg, rgba(239, 68, 68, 0.05) 0%, transparent 100%)" : "transparent" }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: analysis.missing_mods.length > 0 ? "var(--color-danger)" : "var(--color-text)", marginBottom: 4 }}>
                       {analysis.missing_mods.length}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Missing</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Missing</div>
                   </div>
                 </div>
 
                 {/* Missing mods */}
                 {analysis.missing_mods.length > 0 && (
-                  <div className="glass-card" style={{ padding: 16 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span style={{ fontSize: 15 }}>⚠️</span>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-warning)" }}>Missing Mods</span>
-                      <button className="btn-primary" style={{ marginLeft: "auto", fontSize: 11, padding: "4px 10px" }} onClick={enableMissing}>
+                  <div className="glass-card" style={{ padding: 24, borderLeft: "4px solid var(--color-danger)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(239, 68, 68, 0.2)", color: "var(--color-danger)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✕</div>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--color-danger)" }}>Missing Mods</h3>
+                      </div>
+                      <button className="btn-primary" onClick={enableMissing}>
                         Enable All Installed
                       </button>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "grid", gap: 8 }}>
                       {analysis.missing_mods.map((mod) => (
                         <div key={mod.id} style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          padding: "8px 10px", background: "var(--color-bg)", borderRadius: 6,
-                          border: "1px solid rgba(176, 64, 64, 0.3)",
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "12px 16px", background: "rgba(0,0,0,0.2)", borderRadius: 8,
+                          border: "1px solid rgba(239, 68, 68, 0.2)",
                         }}>
-                          <span style={{ color: "var(--color-danger)", fontSize: 13 }}>✕</span>
+                          <span style={{ color: "var(--color-danger)", fontSize: 14 }}>✕</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
                               {mod.name}
                             </div>
-                            <div style={{ fontSize: 10, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>
+                            <div style={{ fontSize: 11, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>
                               {mod.id}
                             </div>
                           </div>
@@ -214,13 +211,14 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                 )}
 
                 {/* Present mods (collapsible) */}
-                <details className="glass-card" style={{ padding: 16 }}>
-                  <summary style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", color: "var(--color-success)", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span>✓</span> Present Mods ({analysis.present_mods.length})
+                <details className="glass-card" style={{ padding: 24 }}>
+                  <summary style={{ fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(16, 185, 129, 0.2)", color: "var(--color-success)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✓</div>
+                    <span>Present Mods ({analysis.present_mods.length})</span>
                   </summary>
-                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
                     {analysis.present_mods.map((id) => (
-                      <div key={id} style={{ fontSize: 12, padding: "4px 8px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+                      <div key={id} style={{ fontSize: 12, padding: "8px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 6, border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {id}
                       </div>
                     ))}
@@ -228,10 +226,10 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                 </details>
               </div>
             ) : (
-              <div className="glass-card" style={{ padding: 60, textAlign: "center", color: "var(--color-text-dim)" }}>
-                <div style={{ fontSize: 42, marginBottom: 12 }}>👈</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-muted)" }}>Select a save file</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>Click a save on the left to check mod compatibility</div>
+              <div className="glass-card" style={{ padding: "100px 40px", textAlign: "center", borderStyle: "dashed" }}>
+                <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>👈</div>
+                <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>Select a Save File</h3>
+                <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Click a save on the left to check mod compatibility and missing dependencies.</p>
               </div>
             )}
           </div>
