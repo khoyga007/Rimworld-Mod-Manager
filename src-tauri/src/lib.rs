@@ -32,6 +32,8 @@ struct DownloadProgress {
     status: String,
     progress: u8,
     message: String,
+    title: Option<String>,
+    preview_url: Option<String>,
 }
 
 #[tauri::command]
@@ -366,7 +368,7 @@ async fn download_workshop_mod(
     let id = workshop_id.clone();
     let id_for_task = workshop_id.clone();
 
-    let emit_queued = |app: &tauri::AppHandle, status: &str, pct: u8, msg: &str| {
+    let emit_queued = |app: &tauri::AppHandle, status: &str, pct: u8, msg: &str, title: Option<String>, preview: Option<String>| {
         let _ = app.emit(
             "download-progress",
             DownloadProgress {
@@ -374,11 +376,13 @@ async fn download_workshop_mod(
                 status: status.to_string(),
                 progress: pct,
                 message: msg.to_string(),
+                title,
+                preview_url: preview,
             },
         );
     };
 
-    emit_queued(&app, "queued", 0, "Queued");
+    emit_queued(&app, "queued", 0, "Queued", None, None);
 
     tauri::async_runtime::spawn(async move {
         let app_h = app.clone();
@@ -390,6 +394,8 @@ async fn download_workshop_mod(
                 status: "downloading".to_string(),
                 progress: 1,
                 message: "Starting...".to_string(),
+                title: None,
+                preview_url: None,
             },
         );
         let staging = paths::config_dir().join("staging");
@@ -397,6 +403,12 @@ async fn download_workshop_mod(
 
         let progress_app = app_h.clone();
         let progress_id = id_for_task.clone();
+
+        // Fetch meta early for preview
+        let meta = workshop::fetch_meta(&id_for_task).await.ok();
+        let title_opt = meta.as_ref().map(|m| m.title.clone());
+        let preview_opt = meta.as_ref().and_then(|m| m.preview_url.clone());
+
         let result = workshop::download(&id_for_task, &staging, |pct, msg| {
             let _ = progress_app.emit(
                 "download-progress",
@@ -405,6 +417,8 @@ async fn download_workshop_mod(
                     status: "downloading".to_string(),
                     progress: pct,
                     message: msg.to_string(),
+                    title: title_opt.clone(),
+                    preview_url: preview_opt.clone(),
                 },
             );
         })
@@ -419,6 +433,8 @@ async fn download_workshop_mod(
                         status: "installing".to_string(),
                         progress: 95,
                         message: "Installing mod...".to_string(),
+                        title: title_opt.clone(),
+                        preview_url: preview_opt.clone(),
                     },
                 );
                 match mods::install_from_folder(
@@ -442,6 +458,8 @@ async fn download_workshop_mod(
                                 status: "done".to_string(),
                                 progress: 100,
                                 message: "Installed".to_string(),
+                                title: title_opt.clone(),
+                                preview_url: preview_opt.clone(),
                             },
                         );
                     }
@@ -453,6 +471,8 @@ async fn download_workshop_mod(
                                 status: "error".to_string(),
                                 progress: 0,
                                 message: format!("Install failed: {}", e),
+                                title: title_opt.clone(),
+                                preview_url: preview_opt.clone(),
                             },
                         );
                     }
@@ -466,6 +486,8 @@ async fn download_workshop_mod(
                         status: "error".to_string(),
                         progress: 0,
                         message: format!("{}", e),
+                        title: title_opt.clone(),
+                        preview_url: preview_opt.clone(),
                     },
                 );
             }
@@ -483,7 +505,13 @@ async fn download_workshop_mods_batch(
 ) -> Result<(), String> {
     let paths_cloned = state.paths.lock().unwrap().clone();
 
-    let emit = |app: &tauri::AppHandle, id: &str, status: &str, pct: u8, msg: &str| {
+    // Fetch all metas early for preview
+    let metas = workshop::fetch_metas(&ids).await.unwrap_or_default();
+    let meta_map: std::collections::HashMap<String, workshop::WorkshopMeta> =
+        metas.into_iter().collect();
+
+    let emit = |app: &tauri::AppHandle, id: &str, status: &str, pct: u8, msg: &str, meta_map: &std::collections::HashMap<String, workshop::WorkshopMeta>| {
+        let meta = meta_map.get(id);
         let _ = app.emit(
             "download-progress",
             DownloadProgress {
@@ -491,37 +519,41 @@ async fn download_workshop_mods_batch(
                 status: status.to_string(),
                 progress: pct,
                 message: msg.to_string(),
+                title: meta.map(|m| m.title.clone()),
+                preview_url: meta.and_then(|m| m.preview_url.clone()),
             },
         );
     };
 
     for id in &ids {
-        emit(&app, id, "queued", 0, "Queued in batch");
+        emit(&app, id, "queued", 0, "Queued in batch", &meta_map);
     }
 
     tauri::async_runtime::spawn(async move {
         let app_h = app.clone();
+        let meta_map_task = meta_map.clone();
         let _guard = DOWNLOAD_LOCK.lock().await;
 
         for id in &ids {
-            emit(&app_h, id, "downloading", 5, "Batching via SteamCMD (1 session)...");
+            emit(&app_h, id, "downloading", 5, "Batching via SteamCMD (1 session)...", &meta_map_task);
         }
 
         let cb_app = app_h.clone();
         let cb_ids = ids.clone();
+        let cb_meta_map = meta_map_task.clone();
         let results = steamcmd::download_workshop_items_batch(&ids, move |ev| {
             match ev {
                 steamcmd::BatchEvent::ItemDone(id) => {
-                    emit(&cb_app, &id, "downloading", 80, "Downloaded, installing...");
+                    emit(&cb_app, &id, "downloading", 80, "Downloaded, installing...", &cb_meta_map);
                 }
                 steamcmd::BatchEvent::ItemFailed(id, reason) => {
-                    emit(&cb_app, &id, "downloading", 50, &format!("SteamCMD: {}", truncate_msg(&reason, 140)));
+                    emit(&cb_app, &id, "downloading", 50, &format!("SteamCMD: {}", truncate_msg(&reason, 140)), &cb_meta_map);
                 }
                 steamcmd::BatchEvent::Line(line) => {
                     let l = line.to_lowercase();
                     if l.contains("downloading") || l.contains("update state") {
                         for id in &cb_ids {
-                            emit(&cb_app, id, "downloading", 40, &truncate_msg(&line, 120));
+                            emit(&cb_app, id, "downloading", 40, &truncate_msg(&line, 120), &cb_meta_map);
                         }
                     }
                 }
@@ -533,22 +565,18 @@ async fn download_workshop_mods_batch(
             Ok(r) => r,
             Err(e) => {
                 for id in &ids {
-                    emit(&app_h, id, "error", 0, &format!("Batch SteamCMD failed: {}", e));
+                    emit(&app_h, id, "error", 0, &format!("Batch SteamCMD failed: {}", e), &meta_map_task);
                 }
                 return;
             }
         };
 
-        let metas = workshop::fetch_metas(&ids).await.unwrap_or_default();
-        let meta_map: std::collections::HashMap<String, workshop::WorkshopMeta> =
-            metas.into_iter().collect();
-
         let mut failed_ids: Vec<String> = Vec::new();
         for id in &ids {
             match results.get(id) {
                 Some(Ok(folder)) => {
-                    emit(&app_h, id, "installing", 92, "Installing...");
-                    let meta = meta_map.get(id).cloned().unwrap_or(workshop::WorkshopMeta {
+                    emit(&app_h, id, "installing", 92, "Installing...", &meta_map_task);
+                    let meta = meta_map_task.get(id).cloned().unwrap_or(workshop::WorkshopMeta {
                         title: format!("Workshop Mod {}", id),
                         description: None,
                         preview_url: None,
@@ -558,8 +586,8 @@ async fn download_workshop_mods_batch(
                     });
                     let about = build_about_from_folder(folder, &meta, id);
                     match mods::install_from_folder(&paths_cloned, folder, id, &about) {
-                        Ok(_) => emit(&app_h, id, "done", 100, "Installed"),
-                        Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e)),
+                        Ok(_) => emit(&app_h, id, "done", 100, "Installed", &meta_map_task),
+                        Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e), &meta_map_task),
                     }
                 }
                 _ => {
@@ -570,20 +598,21 @@ async fn download_workshop_mods_batch(
 
         if !failed_ids.is_empty() {
             for id in &failed_ids {
-                emit(&app_h, id, "downloading", 20, "SteamCMD missed this one — trying web mirrors...");
+                emit(&app_h, id, "downloading", 20, "SteamCMD missed this one — trying web mirrors...", &meta_map_task);
             }
             let staging = paths::config_dir().join("staging");
             let _ = std::fs::create_dir_all(&staging);
             for id in &failed_ids {
                 let prog_app = app_h.clone();
                 let prog_id = id.clone();
+                let prog_meta_map = meta_map_task.clone();
                 let res = workshop::download(id, &staging, move |pct, msg| {
-                    emit(&prog_app, &prog_id, "downloading", pct, msg);
+                    emit(&prog_app, &prog_id, "downloading", pct, msg, &prog_meta_map);
                 })
                 .await;
                 match res {
                     Ok(dl) => {
-                        emit(&app_h, id, "installing", 95, "Installing...");
+                        emit(&app_h, id, "installing", 95, "Installing...", &meta_map_task);
                         match mods::install_from_folder(
                             &paths_cloned,
                             &dl.staging_folder,
@@ -598,12 +627,12 @@ async fn download_workshop_mods_batch(
                                         let _ = std::fs::remove_dir_all(&top);
                                     }
                                 }
-                                emit(&app_h, id, "done", 100, "Installed");
+                                emit(&app_h, id, "done", 100, "Installed", &meta_map_task);
                             }
-                            Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e)),
+                            Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e), &meta_map_task),
                         }
                     }
-                    Err(e) => emit(&app_h, id, "error", 0, &format!("{}", e)),
+                    Err(e) => emit(&app_h, id, "error", 0, &format!("{}", e), &meta_map_task),
                 }
             }
         }

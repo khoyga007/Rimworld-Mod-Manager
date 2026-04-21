@@ -13,14 +13,11 @@ export default function DownloadView({ downloads, toast }: Props) {
 
   const parseIds = (raw: string): string[] => {
     const ids: string[] = [];
-    // Support: workshop URL, ?id=xxx, plain number, comma/newline separated
     for (const part of raw.split(/[\s,;\n]+/)) {
       const trimmed = part.trim();
       if (!trimmed) continue;
-      // Extract ID from URL
       const match = trimmed.match(/(?:\?id=|filedetails\/\?id=|workshop\/content\/\d+\/)(\d+)/);
       if (match) { ids.push(match[1]); continue; }
-      // Plain number
       if (/^\d+$/.test(trimmed)) { ids.push(trimmed); continue; }
     }
     return [...new Set(ids)];
@@ -84,7 +81,7 @@ export default function DownloadView({ downloads, toast }: Props) {
   };
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
+    <div className="animate-fade-in" style={{ maxWidth: 900, margin: "0 auto", paddingBottom: 60 }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Download Mods</h1>
@@ -151,7 +148,7 @@ export default function DownloadView({ downloads, toast }: Props) {
             <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Enter IDs above to start downloading mods.</p>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {downloadEntries.map(([id, dl]) => {
               const isError = dl.status === "error";
               const isDone = dl.status === "done";
@@ -164,45 +161,81 @@ export default function DownloadView({ downloads, toast }: Props) {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 16,
-                    padding: "16px",
+                    gap: 20,
+                    padding: "12px 16px",
                     background: isError ? "rgba(239, 68, 68, 0.05)" : isDone ? "rgba(16, 185, 129, 0.05)" : "var(--color-bg-card)",
                     borderLeft: `4px solid ${statusColor(dl.status)}`,
                     transition: "var(--transition)",
                   }}
                 >
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                    {isDone ? "✓" : isError ? "✕" : isActive ? <div style={{ width: 20, height: 20, border: `2px solid ${statusColor(dl.status)}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} /> : "⏳"}
+                  {/* Thumbnail / Preview */}
+                  <div style={{ 
+                    width: 80, 
+                    height: 80, 
+                    borderRadius: 8, 
+                    background: "rgba(0,0,0,0.3)", 
+                    overflow: "hidden", 
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px solid var(--color-border)"
+                  }}>
+                    {dl.preview_url ? (
+                      <img src={dl.preview_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ fontSize: 24, opacity: 0.3 }}>📦</div>
+                    )}
                   </div>
                   
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text)", fontFamily: "var(--font-mono)" }}>
-                        {id}
+                      <span style={{ 
+                        fontSize: 16, 
+                        fontWeight: 700, 
+                        color: isError ? "var(--color-danger)" : "var(--color-text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }}>
+                        {dl.title || `Mod ${id}`}
                       </span>
                       <span className="badge" style={{ 
                         background: `rgba(${isDone ? "16,185,129" : isError ? "239,68,68" : isActive ? "59,130,246" : "255,255,255"}, 0.1)`, 
                         color: statusColor(dl.status),
-                        borderColor: `rgba(${isDone ? "16,185,129" : isError ? "239,68,68" : isActive ? "59,130,246" : "255,255,255"}, 0.2)`
+                        borderColor: `rgba(${isDone ? "16,185,129" : isError ? "239,68,68" : isActive ? "59,130,246" : "255,255,255"}, 0.2)`,
+                        textTransform: "capitalize"
                       }}>
                         {dl.status}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, color: isError ? "var(--color-danger)" : "var(--color-text-dim)" }}>
-                      {dl.message || (isDone ? "Download completed successfully" : isActive ? "Working..." : "Waiting in queue")}
+                    
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                       <span style={{ fontSize: 11, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)", background: "rgba(0,0,0,0.2)", padding: "2px 6px", borderRadius: 4 }}>
+                        ID: {id}
+                      </span>
+                      <div style={{ fontSize: 13, color: isError ? "var(--color-danger)" : "var(--color-text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {dl.message || (isDone ? "Download completed successfully" : isActive ? "Working..." : "Waiting in queue")}
+                      </div>
                     </div>
+
+                    {isActive && (
+                      <div style={{ width: "100%" }}>
+                        <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.3)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: `${dl.progress}%`, height: "100%", background: "var(--color-info)", transition: "width 0.2s ease", borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {isActive && (
-                    <div style={{ width: 100, marginLeft: 16 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--color-info)", marginBottom: 4, fontWeight: 600 }}>
-                        <span>Progress</span>
-                        <span>{Math.round(dl.progress)}%</span>
-                      </div>
-                      <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.3)", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ width: `${dl.progress}%`, height: "100%", background: "var(--color-info)", transition: "width 0.2s ease", borderRadius: 3 }} />
-                      </div>
+                    <div style={{ minWidth: 50, textAlign: "right", color: "var(--color-info)", fontWeight: 700, fontSize: 14 }}>
+                      {Math.round(dl.progress)}%
                     </div>
+                  )}
+
+                  {!isActive && isDone && (
+                    <div style={{ color: "var(--color-success)", fontSize: 20 }}>✓</div>
                   )}
                 </div>
               );
