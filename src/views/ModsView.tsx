@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ModInfo } from "../types";
@@ -7,11 +7,41 @@ import type { ModInfo } from "../types";
 const _imgCache: Record<string, string> = {};
 const _imgLoading = new Set<string>();
 
+// Queue for lazy-loading images in batches
+const IMG_BATCH_SIZE = 8;
+let _imgQueue: { id: string; path: string }[] = [];
+let _imgProcessing = false;
+
+function processImgQueue(onLoaded: () => void) {
+  if (_imgProcessing || _imgQueue.length === 0) return;
+  _imgProcessing = true;
+  const batch = _imgQueue.splice(0, IMG_BATCH_SIZE);
+  let remaining = batch.length;
+  for (const item of batch) {
+    invoke<string>("read_mod_image", { path: item.path })
+      .then((dataUrl) => {
+        _imgCache[item.id] = dataUrl;
+      })
+      .catch(() => {})
+      .finally(() => {
+        remaining--;
+        if (remaining === 0) {
+          _imgProcessing = false;
+          onLoaded();
+          processImgQueue(onLoaded);
+        }
+      });
+  }
+}
+
 interface Props {
   mods: ModInfo[];
   onRefresh: () => void;
   toast: (msg: string, type?: string) => void;
 }
+
+const ROW_HEIGHT = 72; // Estimated row height in px
+const OVERSCAN = 5;    // Extra rows above/below viewport
 
 export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [search, setSearch] = useState("");
@@ -19,7 +49,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<ModInfo[] | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [imgVer, setImgVer] = useState(0); // bump to trigger re-render when images load
+  const [imgVer, setImgVer] = useState(0);
   const [batchStatus, setBatchStatus] = useState<{
     active: boolean;
     currentModName: string;
@@ -29,44 +59,37 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     title: string;
   } | null>(null);
 
-  // Load mod preview images via backend (bypasses asset protocol issues)
-  useEffect(() => {
-    let mounted = true;
-    const toLoad = mods.filter(m => m.picture && !_imgCache[m.id] && !_imgLoading.has(m.id));
-    if (toLoad.length === 0) return;
-    
-    for (const mod of toLoad) {
-      _imgLoading.add(mod.id);
-      invoke<string>("read_mod_image", { path: mod.picture }).then(dataUrl => {
-        _imgCache[mod.id] = dataUrl;
-        if (mounted) setImgVer(v => v + 1);
-      }).catch(() => {});
-    }
-    return () => { mounted = false; };
-  }, [mods]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(800);
+
+  // Trigger re-render when images finish loading
+  const bumpImgVer = useCallback(() => setImgVer((v) => v + 1), []);
+
+  // Queue visible mod images for lazy loading
+  const queueImages = useCallback(
+    (visibleMods: ModInfo[]) => {
+      let queued = false;
+      for (const m of visibleMods) {
+        if (m.picture && !_imgCache[m.id] && !_imgLoading.has(m.id)) {
+          _imgLoading.add(m.id);
+          _imgQueue.push({ id: m.id, path: m.picture });
+          queued = true;
+        }
+      }
+      if (queued) processImgQueue(bumpImgVer);
+    },
+    [bumpImgVer]
+  );
 
   useEffect(() => {
     let unlisten: any;
     async function setup() {
       unlisten = await listen<any>("optimize-progress", (event) => {
-        const { mod_id, status, progress, message } = event.payload;
-        
-        setBatchStatus(prev => {
+        const { progress, message } = event.payload;
+        setBatchStatus((prev) => {
           if (!prev) return null;
-          
-          // If this is a new mod, increment index? 
-          // Actually, let's just use the message or mod_id to identify.
-          // But since they run sequentially in the backend loop, it's easier.
-          
-          if (status === "scanning" && prev.currentModName !== mod_id) {
-             // This doesn't work perfectly for names vs IDs, but we'll manage.
-          }
-
-          return {
-            ...prev,
-            currentModName: message,
-            progress: progress,
-          };
+          return { ...prev, currentModName: message, progress };
         });
       });
     }
@@ -76,17 +99,57 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
 
   const baseMods = localOrder ?? mods;
 
-  const filtered = baseMods.filter((m) => {
-    if (filter === "enabled" && !m.enabled) return false;
-    if (filter === "disabled" && m.enabled) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q) || m.author.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return baseMods.filter((m) => {
+      if (filter === "enabled" && !m.enabled) return false;
+      if (filter === "disabled" && m.enabled) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return (
+          m.name.toLowerCase().includes(q) ||
+          m.id.toLowerCase().includes(q) ||
+          m.author.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [baseMods, filter, search]);
 
   const canDrag = !search && filter === "all";
+
+  // --- Virtual scroll calculations ---
+  const totalHeight = filtered.length * ROW_HEIGHT;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(
+    filtered.length,
+    Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN
+  );
+  const visibleMods = filtered.slice(startIdx, endIdx);
+  const offsetY = startIdx * ROW_HEIGHT;
+
+  // Queue images for visible mods
+  useEffect(() => {
+    queueImages(visibleMods);
+  }, [startIdx, endIdx, visibleMods, queueImages]);
+
+  // Observe scroll container size
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setViewportHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      setScrollTop(scrollRef.current.scrollTop);
+    }
+  }, []);
 
   const toggleMod = async (id: string, enabled: boolean) => {
     try {
@@ -146,7 +209,6 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
 
     if (!confirm(`Optimize textures (PNG → DDS) for ${localMods.length} local mods? texconv.exe will be auto-downloaded if needed.`)) return;
     
-    // Check if texconv needs download
     const hasTexconv = await invoke<boolean>("check_texconv");
     if (!hasTexconv) {
       setBatchStatus({
@@ -269,10 +331,10 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   };
 
   return (
-    <div className="animate-fade-in" style={{ position: "relative" }}>
+    <div className="animate-fade-in" style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%" }}>
 
       {/* Page Header */}
-      <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexShrink: 0 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Installed Mods</h1>
           <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Manage and organize your RimWorld mod library</p>
@@ -284,7 +346,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
       </div>
 
       {/* Toolbar */}
-      <div className="glass-card" style={{ padding: "16px 20px", marginBottom: 24, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="glass-card" style={{ padding: "16px 20px", marginBottom: 24, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", flexShrink: 0 }}>
         <div style={{ position: "relative", flex: 1, minWidth: 250 }}>
           <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: 0.5 }}>🔍</span>
           <input
@@ -357,7 +419,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
       </div>
 
       {/* Global Actions */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, justifyContent: "flex-end", flexShrink: 0 }}>
         {dirty && (
           <div style={{ marginRight: "auto", display: "flex", gap: 8 }}>
             <button className="btn-secondary" onClick={resetOrder}>↩ Reset</button>
@@ -368,7 +430,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
         <button className="btn-secondary" style={{ fontSize: 12 }} onClick={disableAll}>Disable All</button>
       </div>
 
-      {/* Mod list */}
+      {/* Mod list — Virtualized */}
       {filtered.length === 0 ? (
         <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>📦</div>
@@ -376,135 +438,154 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
           <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Try a different search term or check your game path.</p>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.map((mod) => {
-            const globalIdx = baseMods.indexOf(mod);
-            return (
-              <div
-                key={`${mod.id}-${imgVer}`}
-                draggable={canDrag}
-                onDragStart={() => handleDragStart(globalIdx)}
-                onDragOver={(e) => handleDragOver(e, globalIdx)}
-                onDrop={() => handleDrop(globalIdx)}
-                onDragEnd={handleDragEnd}
-                className="glass-card"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "12px 16px",
-                  gap: 16,
-                  opacity: mod.enabled ? 1 : 0.7,
-                  cursor: canDrag ? "grab" : "default",
-                  borderLeft: mod.enabled ? "4px solid var(--color-accent)" : "4px solid transparent",
-                  background: dragIdx === globalIdx ? "var(--color-accent-glow)" : "",
-                  transform: dragIdx === globalIdx ? "scale(1.01)" : "none",
-                }}
-              >
-                {/* Toggle */}
-                <div
-                  className={`toggle ${mod.enabled ? "active" : ""}`}
-                  onClick={() => toggleMod(mod.id, !mod.enabled)}
-                />
-
-                {/* Preview image */}
-                <div style={{ position: "relative" }}>
-                  {_imgCache[mod.id] ? (
-                    <img 
-                      src={_imgCache[mod.id]} 
-                      alt="" 
-                      style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} 
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
+        >
+          {/* Spacer to create correct total scroll height */}
+          <div style={{ height: totalHeight, position: "relative" }}>
+            <div style={{ 
+              position: "absolute", 
+              top: offsetY, 
+              left: 0, 
+              right: 0,
+              display: "flex", 
+              flexDirection: "column", 
+              gap: 8 
+            }}>
+              {visibleMods.map((mod) => {
+                const globalIdx = baseMods.indexOf(mod);
+                return (
+                  <div
+                    key={`${mod.id}-${imgVer}`}
+                    draggable={canDrag}
+                    onDragStart={() => handleDragStart(globalIdx)}
+                    onDragOver={(e) => handleDragOver(e, globalIdx)}
+                    onDrop={() => handleDrop(globalIdx)}
+                    onDragEnd={handleDragEnd}
+                    className="glass-card"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "12px 16px",
+                      gap: 16,
+                      height: ROW_HEIGHT - 8, // minus gap
+                      boxSizing: "border-box",
+                      opacity: mod.enabled ? 1 : 0.7,
+                      cursor: canDrag ? "grab" : "default",
+                      borderLeft: mod.enabled ? "4px solid var(--color-accent)" : "4px solid transparent",
+                      background: dragIdx === globalIdx ? "var(--color-accent-glow)" : "",
+                      transform: dragIdx === globalIdx ? "scale(1.01)" : "none",
+                    }}
+                  >
+                    {/* Toggle */}
+                    <div
+                      className={`toggle ${mod.enabled ? "active" : ""}`}
+                      onClick={() => toggleMod(mod.id, !mod.enabled)}
                     />
-                  ) : (
-                    <div style={{ width: 48, height: 48, borderRadius: 8, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
-                  )}
-                </div>
 
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: mod.enabled ? "#fff" : "var(--color-text-muted)", marginBottom: 4 }}>
-                    {mod.name}
+                    {/* Preview image — lazy loaded */}
+                    <div style={{ position: "relative" }}>
+                      {_imgCache[mod.id] ? (
+                        <img 
+                          src={_imgCache[mod.id]} 
+                          alt="" 
+                          style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} 
+                        />
+                      ) : (
+                        <div style={{ width: 48, height: 48, borderRadius: 8, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: mod.enabled ? "#fff" : "var(--color-text-muted)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {mod.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--color-text-dim)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ 
+                          fontSize: 9, 
+                          textTransform: "uppercase", 
+                          padding: "1px 6px", 
+                          borderRadius: 4, 
+                          background: mod.source === 'workshop' ? 'rgba(52, 152, 219, 0.15)' : mod.source === 'local' ? 'rgba(46, 204, 113, 0.15)' : mod.source === 'official' ? 'rgba(230, 126, 34, 0.15)' : 'rgba(149, 165, 166, 0.15)',
+                          color: mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6',
+                          border: `1px solid ${mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6'}33`,
+                          fontWeight: 800,
+                          letterSpacing: "0.02em"
+                        }}>
+                          {mod.source}
+                        </span>
+                        <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{mod.author || "Unknown Author"}</span>
+                        <span style={{ opacity: 0.3 }}>•</span>
+                        <span style={{ opacity: 0.6 }}>{mod.id}</span>
+                      </div>
+                    </div>
+
+                    {/* Stats & Metadata */}
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {mod.enabled && (
+                        <div style={{ fontSize: 10, color: "var(--color-accent)", fontWeight: 800, marginBottom: 4 }}>ORDER #{mod.load_order + 1}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: "var(--color-text-dim)" }}>{formatSize(mod.size_bytes)}</div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {mod.source === 'workshop' && (
+                        <button 
+                          className="btn-secondary" 
+                          style={{ padding: "6px 8px", color: "var(--color-info)" }} 
+                          onClick={async () => {
+                            try {
+                              await invoke("backup_mod_to_local", { id: mod.id });
+                              onRefresh();
+                              toast(`Backed up "${mod.name}" to local Mods folder`, "success");
+                            } catch (e: any) {
+                              toast(e?.toString() || "Failed to backup mod", "error");
+                            }
+                          }} 
+                          title="Copy to Local Mods"
+                        >
+                          💾
+                        </button>
+                      )}
+                      {mod.source === 'local' && (
+                        <button 
+                          className="btn-secondary" 
+                          style={{ padding: "6px 8px", color: "var(--color-success)" }} 
+                          onClick={async () => {
+                            try {
+                              setBatchStatus({
+                                active: true,
+                                currentModName: `Initializing optimization for "${mod.name}"...`,
+                                progress: 0,
+                                modIndex: 0,
+                                totalMods: 1,
+                                title: "⚡ Optimizing Textures"
+                              });
+                              await invoke("optimize_mod_textures", { id: mod.id });
+                              toast(`Successfully optimized "${mod.name}"`, "success");
+                            } catch (e: any) {
+                              toast(e?.toString() || "Failed to optimize", "error");
+                            } finally {
+                              setBatchStatus(null);
+                            }
+                          }} 
+                          title="Optimize/Repair Textures (Fixes flipped icons)"
+                        >
+                          ⚡
+                        </button>
+                      )}
+                      <button className="btn-secondary" style={{ padding: "6px 8px" }} onClick={() => invoke("open_path_or_url", { target: mod.path })} title="Open folder">📂</button>
+                      <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-danger)" }} onClick={() => deleteMod(mod.id, mod.name)} title="Delete">🗑</button>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--color-text-dim)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ 
-                      fontSize: 9, 
-                      textTransform: "uppercase", 
-                      padding: "1px 6px", 
-                      borderRadius: 4, 
-                      background: mod.source === 'workshop' ? 'rgba(52, 152, 219, 0.15)' : mod.source === 'local' ? 'rgba(46, 204, 113, 0.15)' : mod.source === 'official' ? 'rgba(230, 126, 34, 0.15)' : 'rgba(149, 165, 166, 0.15)',
-                      color: mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6',
-                      border: `1px solid ${mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6'}33`,
-                      fontWeight: 800,
-                      letterSpacing: "0.02em"
-                    }}>
-                      {mod.source}
-                    </span>
-                    <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{mod.author || "Unknown Author"}</span>
-                    <span style={{ opacity: 0.3 }}>•</span>
-                    <span style={{ opacity: 0.6 }}>{mod.id}</span>
-                  </div>
-                </div>
-
-                {/* Stats & Metadata */}
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  {mod.enabled && (
-                    <div style={{ fontSize: 10, color: "var(--color-accent)", fontWeight: 800, marginBottom: 4 }}>ORDER #{mod.load_order + 1}</div>
-                  )}
-                  <div style={{ fontSize: 11, color: "var(--color-text-dim)" }}>{formatSize(mod.size_bytes)}</div>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 4 }}>
-                  {mod.source === 'workshop' && (
-                    <button 
-                      className="btn-secondary" 
-                      style={{ padding: "6px 8px", color: "var(--color-info)" }} 
-                      onClick={async () => {
-                        try {
-                          await invoke("backup_mod_to_local", { id: mod.id });
-                          onRefresh();
-                          toast(`Backed up "${mod.name}" to local Mods folder`, "success");
-                        } catch (e: any) {
-                          toast(e?.toString() || "Failed to backup mod", "error");
-                        }
-                      }} 
-                      title="Copy to Local Mods"
-                    >
-                      💾
-                    </button>
-                  )}
-                  {mod.source === 'local' && (
-                    <button 
-                      className="btn-secondary" 
-                      style={{ padding: "6px 8px", color: "var(--color-success)" }} 
-                      onClick={async () => {
-                        try {
-                          setBatchStatus({
-                            active: true,
-                            currentModName: `Initializing optimization for "${mod.name}"...`,
-                            progress: 0,
-                            modIndex: 0,
-                            totalMods: 1,
-                            title: "⚡ Optimizing Textures"
-                          });
-                          await invoke("optimize_mod_textures", { id: mod.id });
-                          toast(`Successfully optimized "${mod.name}"`, "success");
-                        } catch (e: any) {
-                          toast(e?.toString() || "Failed to optimize", "error");
-                        } finally {
-                          setBatchStatus(null);
-                        }
-                      }} 
-                      title="Optimize/Repair Textures (Fixes flipped icons)"
-                    >
-                      ⚡
-                    </button>
-                  )}
-                  <button className="btn-secondary" style={{ padding: "6px 8px" }} onClick={() => invoke("open_path_or_url", { target: mod.path })} title="Open folder">📂</button>
-                  <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-danger)" }} onClick={() => deleteMod(mod.id, mod.name)} title="Delete">🗑</button>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
