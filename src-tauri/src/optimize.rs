@@ -130,6 +130,31 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
 
     // Process each PNG via texconv (parallelism handled by rayon)
     let results: Vec<Result<()>> = png_files.par_iter().map(|png_path| {
+        let dds_path = png_path.with_extension("dds");
+        
+        // Skip if DDS exists and is newer than PNG
+        if dds_path.exists() {
+            if let (Ok(m_png), Ok(m_dds)) = (fs::metadata(png_path), fs::metadata(&dds_path)) {
+                if let (Ok(t_png), Ok(t_dds)) = (m_png.modified(), m_dds.modified()) {
+                    if t_dds >= t_png {
+                        // Mark as completed without running texconv
+                        let _ = fs::remove_file(png_path); // Clean up if source still exists
+                        let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        if c % 10 == 0 || c == total {
+                            let pct = ((c as f32 / total as f32) * 100.0) as u8;
+                            emit_progress(&app, OptimizeProgress {
+                                mod_id: mod_info.id.clone(),
+                                status: "optimizing".into(),
+                                progress: pct,
+                                message: format!("Skipping {}/{} (already optimized)...", c, total),
+                            });
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         let result = convert_png_with_texconv(&texconv, png_path);
 
         let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -177,7 +202,7 @@ fn convert_png_with_texconv(texconv: &Path, png_path: &Path) -> Result<()> {
             "-vflip",
             "-m", "0",          // Generate full mipmap chain
             "-if", "FANT",      // High quality mipmap filter
-            "-gpu", "0",        // Use GPU for compression
+            "-gpu", "1",        // Use Dedicated GPU (NVIDIA)
             "-sepalpha",
             "-o", &parent.to_string_lossy(),
         ])
@@ -304,4 +329,201 @@ fn revert_single_dds_to_png(dds_path: &Path) -> Result<()> {
     let _ = fs::remove_file(dds_path);
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Smart Resize: Downscale textures to max resolution + DDS compress
+// ---------------------------------------------------------------------------
+
+/// Resize all textures in a mod to a max resolution and convert to DDS.
+/// Handles both PNG and existing DDS files. texconv accepts both formats.
+pub fn resize_mod_textures(
+    app: AppHandle,
+    _paths: RimWorldPaths,
+    mod_info: ModInfo,
+    max_res: u32,
+) -> Result<()> {
+    if mod_info.path.contains("workshop") {
+        anyhow::bail!("Cannot resize Workshop mods directly. Please 'Copy to Local' first.");
+    }
+
+    let texconv = texconv_path();
+    if !texconv.exists() {
+        anyhow::bail!("texconv.exe not found. It will be downloaded automatically.");
+    }
+
+    let mod_path = PathBuf::from(&mod_info.path);
+    let textures_dir = mod_path.join("Textures");
+
+    if !textures_dir.exists() {
+        emit_progress(&app, OptimizeProgress {
+            mod_id: mod_info.id.clone(),
+            status: "done".into(),
+            progress: 100,
+            message: "No Textures folder found.".into(),
+        });
+        return Ok(());
+    }
+
+    emit_progress(&app, OptimizeProgress {
+        mod_id: mod_info.id.clone(),
+        status: "scanning".into(),
+        progress: 0,
+        message: format!("Scanning {} for oversized textures...", mod_info.name),
+    });
+
+    // Collect both PNG and DDS files
+    let mut texture_files = Vec::new();
+    for entry in WalkDir::new(&textures_dir) {
+        if let Ok(e) = entry {
+            if e.path().is_file() {
+                if let Some(ext) = e.path().extension() {
+                    let ext_lower = ext.to_string_lossy().to_lowercase();
+                    if ext_lower == "png" || ext_lower == "dds" {
+                        texture_files.push(e.path().to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+
+    if texture_files.is_empty() {
+        emit_progress(&app, OptimizeProgress {
+            mod_id: mod_info.id.clone(),
+            status: "done".into(),
+            progress: 100,
+            message: "No texture files to resize.".into(),
+        });
+        return Ok(());
+    }
+
+    // Sort by size (largest first) to balance parallel workload
+    texture_files.sort_by_key(|f| std::cmp::Reverse(fs::metadata(f).map(|m| m.len()).unwrap_or(0)));
+
+    let total = texture_files.len();
+    let completed = std::sync::atomic::AtomicUsize::new(0);
+    let resized_count = std::sync::atomic::AtomicUsize::new(0);
+
+    let max_res_str = max_res.to_string();
+
+    let results: Vec<Result<bool>> = texture_files.par_iter().map(|tex_path| {
+        // SMART SKIP: If it's already a DDS, check if its dimensions are already within limit
+        let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if ext == "dds" {
+            if let Ok((w, h)) = get_dds_dimensions(tex_path) {
+                if w <= max_res && h <= max_res {
+                    let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if c % 10 == 0 || c == total {
+                        let pct = ((c as f32 / total as f32) * 100.0) as u8;
+                        emit_progress(&app, OptimizeProgress {
+                            mod_id: mod_info.id.clone(),
+                            status: "resizing".into(),
+                            progress: pct,
+                            message: format!("Skipped {}/{} (already {}px or smaller)", c, total, max_res),
+                        });
+                    }
+                    return Ok(false);
+                }
+            }
+        }
+
+        let was_resized = resize_single_texture(&texconv, tex_path, &max_res_str)?;
+
+        if was_resized {
+            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if c % 10 == 0 || c == total {
+            let pct = ((c as f32 / total as f32) * 100.0) as u8;
+            emit_progress(&app, OptimizeProgress {
+                mod_id: mod_info.id.clone(),
+                status: "resizing".into(),
+                progress: pct,
+                message: format!("Resizing {}/{} textures (max {}px)...", c, total, max_res_str),
+            });
+        }
+
+        Ok(was_resized)
+    }).collect();
+
+    let failed = results.iter().filter(|r| r.is_err()).count();
+    let actual_resized = resized_count.load(std::sync::atomic::Ordering::Relaxed);
+
+    emit_progress(&app, OptimizeProgress {
+        mod_id: mod_info.id.clone(),
+        status: if failed > 0 { "done_with_errors".into() } else { "done".into() },
+        progress: 100,
+        message: if failed > 0 {
+            format!("Done! {} resized, {} skipped, {} failed.", actual_resized, total - actual_resized - failed, failed)
+        } else {
+            format!("Done! {} resized, {} already within {}px.", actual_resized, total - actual_resized, max_res)
+        },
+    });
+
+    Ok(())
+}
+
+/// Resize a single texture file to max_res and convert to BC7 DDS.
+/// Returns true if the file was actually resized (dimensions exceeded max_res).
+fn resize_single_texture(texconv: &Path, tex_path: &Path, max_res: &str) -> Result<bool> {
+    let parent = tex_path.parent().context("No parent dir")?;
+
+    // For DDS files, we need to check current dimensions first.
+    // For PNG files, texconv will handle them directly.
+    // texconv's -w and -h flags set the MAX dimension while preserving aspect ratio
+    // when used with -ft dds.
+
+    let output = Command::new(texconv)
+        .args([
+            "-f", "BC7_UNORM",
+            "-y",
+            "-w", max_res,          // Max width
+            "-h", max_res,          // Max height
+            "-m", "0",              // Generate full mipmap chain
+            "-if", "FANT",          // High quality mipmap filter
+            "-gpu", "1",            // Use Dedicated GPU (NVIDIA) for compression
+            "-sepalpha",
+            "-o", &parent.to_string_lossy(),
+        ])
+        .arg(tex_path)
+        .output()
+        .context("Failed to run texconv.exe")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        anyhow::bail!("texconv resize failed: {} {}", stdout, stderr);
+    }
+
+    // If input was PNG, delete the original PNG (DDS replaces it)
+    let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let dds_path = tex_path.with_extension("dds");
+
+    if ext == "png" && dds_path.exists() {
+        let meta = fs::metadata(&dds_path)?;
+        if meta.len() > 0 {
+            let _ = fs::remove_file(tex_path);
+        }
+    }
+
+    // Check stdout for "resizing" keyword to determine if resize happened
+    let stdout_str = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    let was_resized = stdout_str.contains("resize") || stdout_str.contains("(w:") || stdout_str.contains("(h:");
+
+    Ok(was_resized)
+}
+
+/// Helper to quickly read DDS width/height from the 128-byte header
+/// Offset 12: height (u32), Offset 16: width (u32)
+fn get_dds_dimensions(path: &Path) -> Result<(u32, u32)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = fs::File::open(path)?;
+    let mut header = [0u8; 20];
+    f.read_exact(&mut header)?;
+    
+    let h = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
+    let w = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
+    
+    Ok((w, h))
 }

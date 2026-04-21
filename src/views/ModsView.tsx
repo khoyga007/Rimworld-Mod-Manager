@@ -58,6 +58,9 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     totalMods: number;
     title: string;
   } | null>(null);
+  const [resizeRes, setResizeRes] = useState<512 | 1024 | 2048>(1024);
+  const [modSizes, setModSizes] = useState<Record<string, { total: number, assets: number }>>({});
+  const [analyzing, setAnalyzing] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -200,6 +203,19 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     try { await invoke("revert_all_local_mods"); toast("All textures reverted to PNG!", "success"); } catch (e: any) { toast(e?.toString() || "Revert failed", "error"); } finally { setBatchStatus(null); onRefresh(); }
   };
 
+  const batchResize = async () => {
+    const localMods = mods.filter(m => !m.path.includes("workshop"));
+    if (localMods.length === 0) { toast("No local mods to resize", "info"); return; }
+    if (!confirm(`Resize all textures to max ${resizeRes}px and convert to DDS for ${localMods.length} local mods?\n\nThis will reduce VRAM usage significantly.\n⚠️ This operation cannot be undone (original resolution is lost).`)) return;
+    const hasTexconv = await invoke<boolean>("check_texconv");
+    if (!hasTexconv) {
+      setBatchStatus({ active: true, currentModName: "Downloading texconv.exe...", progress: 0, modIndex: 0, totalMods: localMods.length, title: "⬇️ Downloading texconv.exe" });
+      try { await invoke("download_texconv"); } catch (e: any) { toast(e?.toString() || "Failed to download texconv", "error"); setBatchStatus(null); return; }
+    }
+    setBatchStatus({ active: true, currentModName: "Starting resize...", progress: 0, modIndex: 0, totalMods: localMods.length, title: `📐 Resizing Textures (max ${resizeRes}px)` });
+    try { await invoke("resize_all_local_mods", { maxRes: resizeRes }); toast(`All textures resized to max ${resizeRes}px!`, "success"); } catch (e: any) { toast(e?.toString() || "Resize failed", "error"); } finally { setBatchStatus(null); onRefresh(); }
+  };
+
   const saveOrder = async () => {
     if (!localOrder) return;
     try {
@@ -208,6 +224,19 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
       onRefresh(); setLocalOrder(null); setDirty(false);
       toast("Load order saved!", "success");
     } catch (e: any) { toast(e?.toString() || "Save failed", "error"); }
+  };
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const res = await invoke<Record<string, any>>("analyze_mod_sizes");
+      setModSizes(res as any);
+      toast("Analysis complete! Heavy mods identified.", "success");
+    } catch (e: any) {
+      toast(e?.toString() || "Analysis failed", "error");
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const resetOrder = () => { setLocalOrder(null); setDirty(false); };
@@ -256,8 +285,18 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn-secondary" style={{ padding: "10px" }} onClick={onRefresh} title="Refresh" disabled={!!batchStatus}>🔄</button>
+          <button className="btn-secondary" onClick={runAnalysis} disabled={analyzing || !!batchStatus} title="Scan mods to find heavy textures">📊 {analyzing ? "Scanning..." : "Analyze Sizes"}</button>
           <button className="btn-secondary" onClick={batchRevert} title="Revert DDS back to PNG" style={{ color: "var(--color-warning)" }} disabled={!!batchStatus}>🔄 Revert DDS</button>
           <button className="btn-secondary" onClick={batchOptimize} title="Optimize PNG to DDS" disabled={!!batchStatus}>⚡ Optimize</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(0,0,0,0.2)", padding: "4px 4px 4px 10px", borderRadius: 10, border: "1px solid var(--color-border)" }}>
+            <span style={{ fontSize: 11, color: "var(--color-text-dim)", whiteSpace: "nowrap" }}>Max:</span>
+            <select value={resizeRes} onChange={(e) => setResizeRes(Number(e.target.value) as 512 | 1024 | 2048)} disabled={!!batchStatus} style={{ background: "rgba(0,0,0,0.3)", color: "var(--color-text)", border: "1px solid var(--color-border)", borderRadius: 6, padding: "4px 6px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+              <option value={2048}>2048px</option>
+              <option value={1024}>1024px</option>
+              <option value={512}>512px</option>
+            </select>
+            <button className="btn-secondary" onClick={batchResize} title={`Resize all textures to max ${resizeRes}px — saves VRAM`} disabled={!!batchStatus} style={{ color: "var(--color-info)", whiteSpace: "nowrap" }}>📐 Resize</button>
+          </div>
           <button className="btn-primary" onClick={autoSort} disabled={!!batchStatus}>⚡ Auto-Sort</button>
         </div>
         {batchStatus && (
@@ -330,7 +369,14 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
                       )}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: mod.enabled ? "#fff" : "var(--color-text-muted)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mod.name}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: mod.enabled ? "#fff" : "var(--color-text-muted)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span>{mod.name}</span>
+                        {modSizes[mod.id] && (
+                          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: modSizes[mod.id].assets > 100000000 ? "rgba(255, 100, 100, 0.2)" : "rgba(255,255,255,0.05)", color: modSizes[mod.id].assets > 100000000 ? "#ff6b6b" : "var(--color-text-dim)" }} title={`Total analyzed: ${formatSize(modSizes[mod.id].total)}`}>
+                            🖼️ {formatSize(modSizes[mod.id].assets)}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 12, color: "var(--color-text-dim)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 9, textTransform: "uppercase", padding: "1px 6px", borderRadius: 4, background: mod.source === 'workshop' ? 'rgba(52, 152, 219, 0.15)' : mod.source === 'local' ? 'rgba(46, 204, 113, 0.15)' : mod.source === 'official' ? 'rgba(230, 126, 34, 0.15)' : 'rgba(149, 165, 166, 0.15)', color: mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6', border: `1px solid ${mod.source === 'workshop' ? '#3498db' : mod.source === 'local' ? '#2ecc71' : mod.source === 'official' ? '#e67e22' : '#95a5a6'}33`, fontWeight: 800, letterSpacing: "0.02em" }}>{mod.source}</span>
                         <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{mod.author || "Unknown Author"}</span>
@@ -347,7 +393,10 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
                         <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-info)" }} onClick={async () => { try { await invoke("backup_mod_to_local", { id: mod.id }); onRefresh(); toast(`Backed up "${mod.name}"`, "success"); } catch (e: any) { toast(e?.toString() || "Failed", "error"); } }} title="Copy to Local Mods">💾</button>
                       )}
                       {mod.source === 'local' && (
-                        <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-success)" }} onClick={async () => { try { setBatchStatus({ active: true, currentModName: `Optimizing "${mod.name}"...`, progress: 0, modIndex: 0, totalMods: 1, title: "⚡ Optimizing Textures" }); await invoke("optimize_mod_textures", { id: mod.id }); toast(`Optimized "${mod.name}"`, "success"); } catch (e: any) { toast(e?.toString() || "Failed", "error"); } finally { setBatchStatus(null); } }} title="Optimize Textures">⚡</button>
+                        <>
+                          <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-success)" }} onClick={async () => { try { setBatchStatus({ active: true, currentModName: `Optimizing "${mod.name}"...`, progress: 0, modIndex: 0, totalMods: 1, title: "⚡ Optimizing Textures" }); await invoke("optimize_mod_textures", { id: mod.id }); toast(`Optimized "${mod.name}"`, "success"); } catch (e: any) { toast(e?.toString() || "Failed", "error"); } finally { setBatchStatus(null); onRefresh(); } }} title="Optimize PNG to DDS">⚡</button>
+                          <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-info)" }} onClick={async () => { try { setBatchStatus({ active: true, currentModName: `Resizing "${mod.name}" to ${resizeRes}px...`, progress: 0, modIndex: 0, totalMods: 1, title: `📐 Resizing Mod (${resizeRes}px)` }); await invoke("resize_mod_textures", { id: mod.id, maxRes: resizeRes }); toast(`Resized "${mod.name}" to ${resizeRes}px`, "success"); } catch (e: any) { toast(e?.toString() || "Failed", "error"); } finally { setBatchStatus(null); onRefresh(); } }} title={`Resize textures to max ${resizeRes}px`}>📐</button>
+                        </>
                       )}
                       <button className="btn-secondary" style={{ padding: "6px 8px" }} onClick={() => invoke("open_path_or_url", { target: mod.path })} title="Open folder">📂</button>
                       <button className="btn-secondary" style={{ padding: "6px 8px", color: "var(--color-danger)" }} onClick={() => deleteMod(mod.id, mod.name)} title="Delete">🗑</button>

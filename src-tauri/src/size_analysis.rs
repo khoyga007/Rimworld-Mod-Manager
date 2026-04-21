@@ -77,7 +77,7 @@ pub fn analyze(mod_path: &Path) -> SizeBreakdown {
         return b;
     }
     let mut files: Vec<HeavyFile> = Vec::new();
-    for e in WalkDir::new(mod_path).into_iter().filter_map(|x| x.ok()) {
+    for e in WalkDir::new(mod_path).follow_links(false).into_iter().filter_map(|x| x.ok()) {
         if !e.file_type().is_file() {
             continue;
         }

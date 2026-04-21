@@ -180,6 +180,52 @@ async fn download_texconv() -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, max_res: u32) -> Result<(), String> {
+    if !optimize::has_texconv() {
+        optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
+    }
+
+    let p = state.paths.lock().unwrap().clone();
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let target_mod = mod_list.into_iter().find(|m| m.id.eq_ignore_ascii_case(&id))
+        .ok_or_else(|| "Mod not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        optimize::resize_mod_textures(app, p, target_mod, max_res)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, max_res: u32) -> Result<(), String> {
+    if !optimize::has_texconv() {
+        optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
+    }
+
+    let p = state.paths.lock().unwrap().clone();
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let local_mods: Vec<_> = mod_list.into_iter().filter(|m| !m.path.contains("workshop")).collect();
+
+    if local_mods.is_empty() {
+        return Err("No local mods found. Only local (copied) mods can be resized.".to_string());
+    }
+
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
+        for m in local_mods {
+            let _ = optimize::resize_mod_textures(app.clone(), p.clone(), m, max_res);
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
+
+    join_result.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[derive(Serialize)]
 struct LogPayload {
     path: String,
@@ -871,6 +917,8 @@ pub fn run() {
             analyze_save_game,
             update_community_rules,
             read_mod_image,
+            resize_mod_textures,
+            resize_all_local_mods,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
