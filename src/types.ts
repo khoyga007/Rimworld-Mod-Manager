@@ -1,0 +1,101 @@
+export interface ModInfo {
+  id: string;
+  name: string;
+  author: string;
+  version?: string;
+  supported_version?: string;
+  tags: string[];
+  dependencies: string[];
+  load_after: string[];
+  load_before: string[];
+  picture?: string;
+  path: string;
+  descriptor_path: string;
+  remote_file_id?: string;
+  enabled: boolean;
+  load_order: number;
+  size_bytes: number;
+}
+
+export interface RimWorldPaths {
+  config_dir: string;
+  mods_config_path: string;
+  game_dir?: string;
+}
+
+export interface DownloadProgress {
+  workshop_id: string;
+  status: "queued" | "downloading" | "extracting" | "installing" | "done" | "error";
+  progress: number;
+  message: string;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  mod_ids: string[];
+  note?: string;
+}
+
+export type LoadOrderIssue =
+  | { kind: "MissingDependency"; mod_id: string; mod_name: string; missing: string }
+  | { kind: "Cycle"; mod_ids: string[]; mod_names: string[] }
+  | { kind: "OutOfOrder"; mod_id: string; mod_name: string; current_index: number; suggested_index: number };
+
+export interface ModPlan {
+  mod_id: string;
+  mod_name: string;
+  suggested_index: number;
+  current_index: number | null;
+  bucket: string;
+  reason: string;
+}
+
+export interface LoadOrderAnalysis {
+  suggested: string[];
+  plan: ModPlan[];
+  issues: LoadOrderIssue[];
+}
+
+export interface SortPreview {
+  current: string[];
+  suggested: string[];
+}
+
+export interface LogPayload {
+  path: string;
+  content: string;
+}
+
+export interface UpdateStatus {
+  mod_id: string;
+  remote_file_id: string;
+  local_time: number;
+  remote_time: number;
+  has_update: boolean;
+  title: string;
+}
+
+export interface SaveGameInfo {
+  file_name: string;
+  colony_name: string;
+  seed: string;
+  game_version: string;
+  mod_ids: string[];
+  mod_names: string[];
+  save_date: string;
+  file_size: number;
+}
+
+export interface MissingSaveMod {
+  id: string;
+  name: string;
+}
+
+export interface SaveAnalysis {
+  save: SaveGameInfo;
+  missing_mods: MissingSaveMod[];
+  present_mods: string[];
+}

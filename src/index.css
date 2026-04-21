@@ -1,0 +1,274 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cinzel", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* RimWorld Colony palette — warm earth tones */
+  --color-bg: #1a1612;
+  --color-bg-elevated: #221e19;
+  --color-bg-card: #2a2520;
+  --color-bg-hover: #352f28;
+  --color-bg-active: #3d362d;
+
+  --color-border: #3e362d;
+  --color-border-strong: #5a4e42;
+
+  --color-text: #e8dfd4;
+  --color-text-muted: #a89b8c;
+  --color-text-dim: #6b5f52;
+
+  --color-accent: #c9943a;
+  --color-accent-hover: #daa84e;
+  --color-accent-glow: #c9943a40;
+
+  --color-success: #5a9a4a;
+  --color-warning: #c9943a;
+  --color-danger: #b04040;
+  --color-info: #5a8aaa;
+
+  --color-sidebar: #151210;
+  --color-sidebar-hover: #2a2520;
+  --color-sidebar-active: #352f28;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent);
+  }
+}
+
+/* Utility classes */
+.glass-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #1a1612;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--color-accent-glow);
+}
+
+.btn-secondary {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-secondary:hover {
+  background: var(--color-bg-active);
+  border-color: var(--color-border-strong);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+}
+.btn-danger:hover {
+  filter: brightness(1.2);
+}
+
+.input-field {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--color-text);
+  font-size: 13px;
+  transition: border-color 0.2s;
+  outline: none;
+  width: 100%;
+}
+.input-field:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-glow);
+}
+.input-field::placeholder {
+  color: var(--color-text-dim);
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+.toggle.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  top: 2px;
+  left: 2px;
+  transition: all 0.25s ease;
+}
+.toggle.active::after {
+  transform: translateX(16px);
+  background: #1a1612;
+}
+
+/* Toast */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--color-text);
+  animation: slideIn 0.3s ease;
+  max-width: 350px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.toast.success { border-left: 3px solid var(--color-success); }
+.toast.error { border-left: 3px solid var(--color-danger); }
+.toast.info { border-left: 3px solid var(--color-info); }
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Fade-in for views */
+.view-enter {
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Badge / pill */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+.badge.success { background: rgba(90, 154, 74, 0.15); color: var(--color-success); border-color: rgba(90, 154, 74, 0.3); }
+.badge.danger  { background: rgba(176, 64, 64, 0.15); color: var(--color-danger);  border-color: rgba(176, 64, 64, 0.3); }
+.badge.warning { background: rgba(201, 148, 58, 0.15); color: var(--color-warning); border-color: rgba(201, 148, 58, 0.3); }
+.badge.info    { background: rgba(90, 138, 170, 0.15); color: var(--color-info);    border-color: rgba(90, 138, 170, 0.3); }
+
+/* Pulse for live indicator */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse { animation: pulse 1.5s ease-in-out infinite; }
+
+/* Details/summary styling */
+details summary {
+  list-style: none;
+  user-select: none;
+}
+details summary::-webkit-details-marker {
+  display: none;
+}
+details summary::before {
+  content: "▸ ";
+  display: inline;
+  transition: transform 0.2s;
+}
+details[open] summary::before {
+  content: "▾ ";
+}
+
+/* Stat cards hover */
+.stat-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
