@@ -159,7 +159,7 @@ export default function App() {
             )}
 
             {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
-            {view === "download" && <DownloadView downloads={downloads} toast={toast} onRefresh={refreshMods} />}
+            {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
             {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
