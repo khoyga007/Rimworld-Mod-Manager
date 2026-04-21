@@ -31,7 +31,7 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
           color: "var(--color-text)",
           letterSpacing: "-0.03em",
         }}>
-          RIM<span style={{ color: "var(--color-accent)" }}>SORT</span>
+          RIM<span style={{ color: "var(--color-accent)" }}>PRO</span>
         </div>
         <div style={{
           fontSize: 11,

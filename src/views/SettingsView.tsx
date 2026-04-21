@@ -152,7 +152,7 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
           <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, marginBottom: 16, boxShadow: "0 8px 16px rgba(0,0,0,0.2)" }}>
             🚀
           </div>
-          <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 4px", color: "var(--color-accent)" }}>RIMSORT Pro</h3>
+          <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 4px", color: "var(--color-accent)" }}>RIMPRO</h3>
           <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 12 }}>v1.0.0-PRO</div>
           <p style={{ fontSize: 13, color: "var(--color-text-dim)", margin: 0, lineHeight: 1.5 }}>
             Built with Rust + Tauri + React.<br/>

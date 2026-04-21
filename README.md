@@ -1,4 +1,4 @@
-# 🚀 RimWorld Mod Manager Pro
+# 🚀 RIMPRO
 
 A high-performance, professional-grade mod manager for RimWorld. Engineered with **Rust** and **Tauri** for maximum safety, reliability, and speed. Works seamlessly with both Steam and offline/non-Steam builds.
 
@@ -58,7 +58,7 @@ npm run tauri dev
 ---
 
 <a name="tiếng-việt"></a>
-# 🇻🇳 RimWorld Mod Manager (Tiếng Việt)
+# 🇻🇳 RIMPRO (Tiếng Việt)
 
 Trình quản lý Mod chuyên nghiệp, hiệu năng cao dành cho RimWorld. Được xây dựng dựa trên nền tảng **Rust** và **Tauri**, mang lại sự an toàn tuyệt đối cho file cấu hình và tốc độ xử lý vượt trội.
 
