@@ -113,6 +113,19 @@ export default function DownloadView({ downloads, toast, onRefresh }: Props) {
           <button className="btn-secondary" onClick={handleCollection} disabled={busy || !input.trim()}>
             📦 Import Collection
           </button>
+          <button
+            className="btn-secondary"
+            style={{ marginLeft: "auto" }}
+            onClick={async () => {
+              try {
+                await invoke("open_path_or_url", { target: "https://steamcommunity.com/app/294100/workshop/" });
+              } catch {
+                window.open("https://steamcommunity.com/app/294100/workshop/", "_blank");
+              }
+            }}
+          >
+            🌐 Browse Workshop
+          </button>
         </div>
       </div>
 
