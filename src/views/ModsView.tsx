@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ModInfo } from "../types";
 
@@ -388,7 +388,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
                 {/* Preview image */}
                 <div style={{ position: "relative" }}>
                   {mod.picture ? (
-                    <img src={mod.picture} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} />
+                    <img src={convertFileSrc(mod.picture)} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} />
                   ) : (
                     <div style={{ width: 48, height: 48, borderRadius: 8, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📦</div>
                   )}

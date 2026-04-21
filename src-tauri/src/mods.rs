@@ -240,12 +240,8 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
 
     let size_bytes = dir_size(mod_path);
     let picture = mod_path.join("About").join("Preview.png");
-    let picture_b64 = if picture.exists() {
-        fs::read(&picture).ok().map(|b| {
-            use base64::Engine as _;
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&b);
-            format!("data:image/png;base64,{}", b64)
-        })
+    let picture_path = if picture.exists() {
+        Some(picture.to_string_lossy().into_owned())
     } else {
         None
     };
@@ -267,7 +263,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         load_after: d.load_after,
         load_before: d.load_before,
         incompatible_with: d.incompatible_with,
-        picture: picture_b64,
+        picture: picture_path,
         path: mod_path.to_string_lossy().into_owned(),
         descriptor_path: about_file.to_string_lossy().into_owned(),
         remote_file_id: None,

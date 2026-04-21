@@ -83,6 +83,24 @@ export default function App() {
     );
   }
 
+  if (error && !paths) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 24, padding: 40, textAlign: "center" }}>
+        <div style={{ fontSize: 64 }}>👽</div>
+        <div>
+          <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, color: "var(--color-danger)" }}>RimWorld Detection Failed</h2>
+          <p style={{ color: "var(--color-text-dim)", maxWidth: 500, margin: "0 auto 24px", lineHeight: 1.6 }}>
+            {error}. This usually happens if the app can't access your RimWorld configuration or AppData folder.
+          </p>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <button className="btn-primary" onClick={() => window.location.reload()}>🔄 Retry Initialization</button>
+            <button className="btn-secondary" onClick={() => { setError(null); setView("settings"); }}>⚙ Open Settings</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       <Sidebar
