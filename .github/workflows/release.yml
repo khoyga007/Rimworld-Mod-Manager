@@ -1,20 +1,86 @@
-name: Release
+name: Auto Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.release_check.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read app version
+        id: version
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+
+          if ($packageVersion -ne $tauriVersion) {
+            throw "Version mismatch: package.json=$packageVersion, tauri.conf.json=$tauriVersion"
+          }
+
+          "version=$tauriVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$tauriVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Check existing release
+        id: release_check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $repo = "${{ github.repository }}"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+
+          try {
+            Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers $headers | Out-Null
+            "should_release=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $tag already exists. Skipping."
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) {
+              throw
+            }
+            "should_release=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $tag does not exist yet. Creating one."
+          }
+
+      - name: Create git tag
+        if: steps.release_check.outputs.should_release == 'true'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag $tag
+          git push origin $tag
+
   build:
-    name: Build Windows
+    name: Build Windows Release
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -33,15 +99,15 @@ jobs:
       - name: Install frontend deps
         run: npm ci --legacy-peer-deps
 
-      - name: Build Tauri app
+      - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "RimWorld Mod Manager ${{ github.ref_name }}"
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: "RimWorld Mod Manager ${{ needs.prepare.outputs.tag }}"
           releaseBody: |
-            See CHANGELOG / commits for details.
+            Automated release for version ${{ needs.prepare.outputs.version }}.
 
             Download the installer below (`.msi` or `.exe`).
           releaseDraft: false
