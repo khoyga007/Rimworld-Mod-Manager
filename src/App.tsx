@@ -9,6 +9,7 @@ import LogsView from "./views/LogsView";
 import LoadOrderView from "./views/LoadOrderView";
 import DownloadView from "./views/DownloadView";
 import CollectionsView from "./views/CollectionsView";
+import SaveGameView from "./views/SaveGameView";
 import { ModHubView } from "./views/ModHubView";
 
 type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";

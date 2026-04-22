@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { memo, useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -44,7 +44,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
   const [dirty, setDirty] = useState(false);
-  const [imgVer, setImgVer] = useState(0);
+  const [, setImgVer] = useState(0);
   const [batchStatus, setBatchStatus] = useState<{
     active: boolean; currentModName: string; progress: number; title: string;
   } | null>(null);
@@ -54,6 +54,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [analyzing, setAnalyzing] = useState(false);
 
   const bumpImgVer = useCallback(() => setImgVer((v) => v + 1), []);
+
 
   // Synchronize local state with mods prop when it changes
   useEffect(() => {
