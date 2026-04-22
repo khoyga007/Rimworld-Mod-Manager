@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
-import type { AppSettings, RimWorldPaths } from "../types";
+import type { AppSettings, PerformanceLevel, RimWorldPaths } from "../types";
 
 interface Props {
   paths: RimWorldPaths | null;
@@ -15,6 +15,8 @@ interface Props {
 export default function SettingsView({ paths, settings, onSettingsChange, onPathsChange, toast }: Props) {
   const { t } = useTranslation();
   const [exePath, setExePath] = useState<string>("");
+  const performanceEnabled = settings.performanceLevel !== "normal";
+  const ultraPerformance = settings.performanceLevel === "ultra";
 
   const updateSettings = (patch: Partial<AppSettings>, toastKey?: string) => {
     const next = { ...settings, ...patch };
@@ -61,7 +63,7 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
   };
 
   return (
-    <div className="animate-fade-in flex-1 overflow-y-auto custom-scrollbar p-8" style={{ minHeight: 0 }}>
+    <div className={`${ultraPerformance ? '' : 'animate-fade-in'} flex-1 overflow-y-auto custom-scrollbar p-8`} style={{ minHeight: 0 }}>
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
@@ -134,64 +136,46 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
               ⚡
             </div>
             <div>
-              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.performance_mode')}</h3>
-              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.performance_mode_desc')}</div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.performance_level')}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.performance_level_desc')}</div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              const next = !settings.performanceMode;
-              updateSettings({
-                performanceMode: next,
-                dismissedPerformanceSuggestion: next ? true : settings.dismissedPerformanceSuggestion,
-              }, next ? 'settings.performance_mode_on' : 'settings.performance_mode_off');
-            }}
-            className="w-full"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              padding: 16,
-              borderRadius: 12,
-              border: `1px solid ${settings.performanceMode ? "rgba(34,197,94,0.35)" : "var(--color-border)"}`,
-              background: settings.performanceMode ? "rgba(34, 197, 94, 0.08)" : "rgba(0,0,0,0.2)",
-              color: "var(--color-text)",
-            }}
-          >
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {settings.performanceMode ? "ON" : "OFF"}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>
-                {t('settings.performance_mode_hint')}
-              </div>
-            </div>
-            <div
-              style={{
-                width: 52,
-                height: 30,
-                borderRadius: 999,
-                background: settings.performanceMode ? "rgba(34, 197, 94, 0.85)" : "rgba(255,255,255,0.12)",
-                padding: 4,
-                display: "flex",
-                justifyContent: settings.performanceMode ? "flex-end" : "flex-start",
-                transition: "all 150ms ease",
-              }}
-            >
-              <div
+          <div style={{ display: "grid", gap: 10 }}>
+            {([
+              ["normal", "settings.performance_normal", "settings.performance_normal_desc"],
+              ["performance", "settings.performance_mode", "settings.performance_mode_desc"],
+              ["ultra", "settings.ultra_performance", "settings.ultra_performance_desc"],
+            ] as [PerformanceLevel, string, string][]).map(([level, titleKey, descKey]) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => updateSettings({
+                  performanceLevel: level,
+                  dismissedPerformanceSuggestion: level !== "normal" ? true : settings.dismissedPerformanceSuggestion,
+                }, `settings.${level === "normal" ? "performance_normal_on" : level === "performance" ? "performance_mode_on" : "ultra_performance_on"}`)}
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: "50%",
-                  background: "#fff",
-                  boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  padding: 14,
+                  borderRadius: 12,
+                  border: settings.performanceLevel === level ? "1px solid rgba(34,197,94,0.35)" : "1px solid var(--color-border)",
+                  background: settings.performanceLevel === level ? "rgba(34, 197, 94, 0.08)" : "rgba(0,0,0,0.2)",
+                  color: "var(--color-text)",
                 }}
-              />
-            </div>
-          </button>
+              >
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t(titleKey)}</div>
+                  <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>{t(descKey)}</div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>
+                  {settings.performanceLevel === level ? "ACTIVE" : ""}
+                </div>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="glass-card" style={{ padding: 24 }}>
@@ -244,6 +228,12 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
               </div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>{settings.autoSuggestPerformanceMode ? "ON" : "OFF"}</div>
             </button>
+
+            {performanceEnabled && (
+              <div style={{ fontSize: 12, color: "var(--color-text-dim)", paddingTop: 6 }}>
+                {t('settings.performance_mode_hint')}
+              </div>
+            )}
           </div>
         </section>
 

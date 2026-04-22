@@ -1,0 +1,104 @@
+﻿cargo :     Checking rimworldmodmanager v0.5.1 (E:\RimWorldModManager\src-tauri)
+At line:1 char:1
++ cargo check 2>&1 | Out-File -Encoding utf8 check_results.txt
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ri...ager\src-tauri):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error[E0428]: the name `nuke_local_mods` is defined multiple times
+   --> src\lib.rs:119:1
+    |
+113 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    | ----------------------------------------------------------------- previous definition of the value 
+`nuke_local_mods` here
+...
+119 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `nuke_local_mods` redefined here
+    |
+    = note: `nuke_local_mods` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `nuke_local_mods` is defined multiple times
+   --> src\lib.rs:125:1
+    |
+113 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    | ----------------------------------------------------------------- previous definition of the value 
+`nuke_local_mods` here
+...
+125 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `nuke_local_mods` redefined here
+    |
+    = note: `nuke_local_mods` must be defined only once in the value namespace of this module
+
+error[E0252]: the name `__cmd__nuke_local_mods` is defined multiple times
+   --> src\lib.rs:119:4
+    |
+113 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |    --------------- previous import of the macro `__cmd__nuke_local_mods` here
+...
+119 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |    ^^^^^^^^^^^^^^^ `__cmd__nuke_local_mods` reimported here
+    |
+    = note: `__cmd__nuke_local_mods` must be defined only once in the macro namespace of this module
+help: you can use `as` to change the binding name of the import
+    |
+119 | fn nuke_local_mods as other___cmd__nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |                    +++++++++++++++++++++++++++++++
+
+error[E0252]: the name `__cmd__nuke_local_mods` is defined multiple times
+   --> src\lib.rs:125:4
+    |
+113 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |    --------------- previous import of the macro `__cmd__nuke_local_mods` here
+...
+125 | fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |    ^^^^^^^^^^^^^^^ `__cmd__nuke_local_mods` reimported here
+    |
+    = note: `__cmd__nuke_local_mods` must be defined only once in the macro namespace of this module
+help: you can use `as` to change the binding name of the import
+    |
+125 | fn nuke_local_mods as other___cmd__nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    |                    +++++++++++++++++++++++++++++++
+
+error[E0659]: `__cmd__nuke_local_mods` is ambiguous
+    --> src\lib.rs:1101:13
+     |
+1101 |             nuke_local_mods,
+     |             ^^^^^^^^^^^^^^^ ambiguous name
+     |
+     = note: ambiguous because of a conflict between a macro-expanded name and a less macro-expanded name from outer 
+scope during import or macro resolution
+note: `__cmd__nuke_local_mods` could refer to the macro defined here
+    --> src\lib.rs:124:1
+     |
+ 124 | #[tauri::command]
+     | ^^^^^^^^^^^^^^^^^
+note: `__cmd__nuke_local_mods` could also refer to the macro defined here
+    --> src\lib.rs:118:1
+     |
+ 118 | #[tauri::command]
+     | ^^^^^^^^^^^^^^^^^
+     = note: this error originates in the attribute macro `tauri::command` (in Nightly builds, run with -Z 
+macro-backtrace for more info)
+
+warning: variable does not need to be mutable
+   --> src\mods.rs:824:9
+    |
+824 |     let mut config = read_mods_config(Path::new(&paths.mods_config_path))?;
+    |         ----^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `config`
+   --> src\mods.rs:824:9
+    |
+824 |     let mut config = read_mods_config(Path::new(&paths.mods_config_path))?;
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0252, E0428, E0659.
+For more information about an error, try `rustc --explain E0252`.
+warning: `rimworldmodmanager` (lib) generated 2 warnings
+error: could not compile `rimworldmodmanager` (lib) due to 5 previous errors; 2 warnings emitted

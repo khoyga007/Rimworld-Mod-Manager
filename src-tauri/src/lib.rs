@@ -73,7 +73,6 @@ fn set_mod_enabled(state: State<AppState>, id: String, enabled: bool) -> Result<
 fn set_all_mods_enabled(state: State<AppState>, enabled: bool) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
     mods::set_all_enabled(&p, enabled).map_err(|e| e.to_string())?;
-    mods::clear_cache();
     Ok(())
 }
 
@@ -81,7 +80,6 @@ fn set_all_mods_enabled(state: State<AppState>, enabled: bool) -> Result<(), Str
 fn set_load_order(state: State<AppState>, ids: Vec<String>) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
     mods::set_order(&p, &ids).map_err(|e| e.to_string())?;
-    mods::clear_cache();
     Ok(())
 }
 
@@ -895,7 +893,13 @@ fn analyze_save_game(state: State<AppState>, file_name: String) -> Result<savega
 
 #[tauri::command]
 fn read_mod_image(path: String) -> Result<String, String> {
-    let p = std::path::Path::new(&path);
+    let mut resolved = PathBuf::from(&path);
+    if resolved.is_dir() {
+        resolved = mods::resolve_preview_image(&resolved)
+            .ok_or_else(|| "Preview image not found".to_string())?;
+    }
+
+    let p = resolved.as_path();
     if !p.exists() {
         return Err("File not found".into());
     }

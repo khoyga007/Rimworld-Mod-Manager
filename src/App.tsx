@@ -1,23 +1,26 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ModInfo, RimWorldPaths, DownloadProgress, AppSettings } from "./types";
+import type { ModInfo, RimWorldPaths, DownloadProgress, AppSettings, PerformanceLevel } from "./types";
 import Sidebar from "./components/Sidebar";
 import ModsView from "./views/ModsView";
-import SettingsView from "./views/SettingsView";
-import LogsView from "./views/LogsView";
-import LoadOrderView from "./views/LoadOrderView";
-import DownloadView from "./views/DownloadView";
-import CollectionsView from "./views/CollectionsView";
-import SaveGameView from "./views/SaveGameView";
-import GuideView from "./views/GuideView";
-import { ModHubView } from "./views/ModHubView";
 import { useTranslation } from 'react-i18next';
+
+const SettingsView = lazy(() => import("./views/SettingsView"));
+const LogsView = lazy(() => import("./views/LogsView"));
+const LoadOrderView = lazy(() => import("./views/LoadOrderView"));
+const DownloadView = lazy(() => import("./views/DownloadView"));
+const CollectionsView = lazy(() => import("./views/CollectionsView"));
+const SaveGameView = lazy(() => import("./views/SaveGameView"));
+const GuideView = lazy(() => import("./views/GuideView"));
+const ModHubView = lazy(() =>
+  import("./views/ModHubView").then((module) => ({ default: module.ModHubView }))
+);
 
 type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
 const APP_SETTINGS_KEY = "rimpro.appSettings";
 const DEFAULT_SETTINGS: AppSettings = {
-  performanceMode: false,
+  performanceLevel: "normal",
   disableThumbnails: false,
   autoSuggestPerformanceMode: true,
   dismissedPerformanceSuggestion: false,
@@ -35,7 +38,17 @@ export default function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
       const raw = localStorage.getItem(APP_SETTINGS_KEY);
-      return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+      if (!raw) return DEFAULT_SETTINGS;
+      const parsed = JSON.parse(raw);
+      const legacyPerformanceMode = typeof parsed.performanceMode === "boolean" ? parsed.performanceMode : undefined;
+      const performanceLevel: PerformanceLevel = parsed.performanceLevel
+        ?? (legacyPerformanceMode ? "performance" : "normal");
+
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        performanceLevel,
+      };
     } catch {
       return DEFAULT_SETTINGS;
     }
@@ -108,16 +121,26 @@ export default function App() {
   }, [appSettings]);
 
   const enabledCount = mods.filter((m) => m.enabled).length;
+  const performanceEnabled = appSettings.performanceLevel !== "normal";
+  const ultraPerformance = appSettings.performanceLevel === "ultra";
+  const viewLoadingFallback = (
+    <div className="flex-1 flex items-center justify-center">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--color-text-muted)", fontSize: 14 }}>
+        <div style={{ width: 18, height: 18, border: "2px solid var(--color-border)", borderTop: "2px solid var(--color-accent)", borderRadius: "50%", animation: ultraPerformance ? "none" : "spin 0.8s linear infinite" }} />
+        <span>{t('common.loading') || 'Loading...'}</span>
+      </div>
+    </div>
+  );
   const showPerformanceSuggestion =
-    mods.length > 1000 &&
-    !appSettings.performanceMode &&
+    mods.length > (ultraPerformance ? 2000 : 1000) &&
+    !performanceEnabled &&
     appSettings.autoSuggestPerformanceMode &&
     !appSettings.dismissedPerformanceSuggestion;
 
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 16 }}>
-        <div style={{ width: 32, height: 32, border: "3px solid var(--color-border)", borderTop: "3px solid var(--color-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <div style={{ width: 32, height: 32, border: "3px solid var(--color-border)", borderTop: "3px solid var(--color-accent)", borderRadius: "50%", animation: ultraPerformance ? "none" : "spin 0.8s linear infinite" }} />
         <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{t('common.detecting_game')}</span>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -143,7 +166,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${ultraPerformance ? "ultra-performance" : ""}`}>
       <Sidebar
         currentView={view}
         onNavigate={setView}
@@ -162,13 +185,13 @@ export default function App() {
           padding: "0 32px",
           borderBottom: "1px solid var(--color-border)",
           background: "rgba(10, 11, 13, 0.8)",
-          backdropFilter: "blur(20px)",
+          backdropFilter: ultraPerformance ? "none" : "blur(20px)",
           flexShrink: 0,
           zIndex: 10,
         }}>
           <div className="flex items-center gap-16">
             <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className={`w-2 h-2 rounded-full bg-green-500 ${ultraPerformance ? "" : "animate-pulse"}`} />
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider uppercase">{t('common.status_online')}</span>
             </div>
           </div>
@@ -176,7 +199,7 @@ export default function App() {
 
         {/* View content */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div className="main-view animate-slide-up h-full flex flex-col overflow-hidden" key={view}>
+          <div className={`main-view h-full flex flex-col overflow-hidden ${ultraPerformance ? "" : "animate-slide-up"}`} key={view}>
             {showPerformanceSuggestion && view !== "settings" && (
               <div className="glass-card" style={{
                 padding: "16px 20px",
@@ -200,7 +223,7 @@ export default function App() {
                   style={{ fontSize: 12 }}
                   onClick={() => setAppSettings(prev => ({
                     ...prev,
-                    performanceMode: true,
+                    performanceLevel: mods.length > 2000 ? "ultra" : "performance",
                     dismissedPerformanceSuggestion: true,
                   }))}
                 >
@@ -246,41 +269,43 @@ export default function App() {
               </div>
             )}
 
-            {view === "mods" && (
-              <ModsView 
-                mods={mods} 
-                onRefresh={refreshMods} 
-                toast={toast} 
-                selectedPresetId={selectedPresetId}
-                setSelectedPresetId={setSelectedPresetId}
-                performanceMode={appSettings.performanceMode}
-                disableThumbnails={appSettings.disableThumbnails}
-              />
-            )}
-            {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} performanceMode={appSettings.performanceMode} />}
-            {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
-            {view === "collections" && (
-              <CollectionsView 
-                mods={mods} 
-                toast={toast} 
-                onRefresh={refreshMods} 
-                selectedPresetId={selectedPresetId}
-                setSelectedPresetId={setSelectedPresetId}
-              />
-            )}
-            {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
-            {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
-            {view === "logs" && <LogsView />}
-            {view === "guide" && <GuideView />}
-            {view === "settings" && (
-              <SettingsView
-                paths={paths}
-                settings={appSettings}
-                onSettingsChange={setAppSettings}
-                onPathsChange={(p) => { setPaths(p); refreshMods(); }}
-                toast={toast}
-              />
-            )}
+            <Suspense fallback={viewLoadingFallback}>
+              {view === "mods" && (
+                <ModsView 
+                  mods={mods} 
+                  onRefresh={refreshMods} 
+                  toast={toast} 
+                  selectedPresetId={selectedPresetId}
+                  setSelectedPresetId={setSelectedPresetId}
+                  performanceLevel={appSettings.performanceLevel}
+                  disableThumbnails={appSettings.disableThumbnails}
+                />
+              )}
+              {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} performanceLevel={appSettings.performanceLevel} />}
+              {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
+              {view === "collections" && (
+                <CollectionsView 
+                  mods={mods} 
+                  toast={toast} 
+                  onRefresh={refreshMods} 
+                  selectedPresetId={selectedPresetId}
+                  setSelectedPresetId={setSelectedPresetId}
+                />
+              )}
+              {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
+              {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
+              {view === "logs" && <LogsView />}
+              {view === "guide" && <GuideView />}
+              {view === "settings" && (
+                <SettingsView
+                  paths={paths}
+                  settings={appSettings}
+                  onSettingsChange={setAppSettings}
+                  onPathsChange={(p) => { setPaths(p); refreshMods(); }}
+                  toast={toast}
+                />
+              )}
+            </Suspense>
           </div>
         </div>
       </main>

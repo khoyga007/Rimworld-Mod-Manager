@@ -53,8 +53,10 @@ export interface Preset {
   note?: string;
 }
 
+export type PerformanceLevel = "normal" | "performance" | "ultra";
+
 export interface AppSettings {
-  performanceMode: boolean;
+  performanceLevel: PerformanceLevel;
   disableThumbnails: boolean;
   autoSuggestPerformanceMode: boolean;
   dismissedPerformanceSuggestion: boolean;

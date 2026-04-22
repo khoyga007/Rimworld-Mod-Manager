@@ -74,6 +74,33 @@
   overflow: hidden;
 }
 
+.ultra-performance *,
+.ultra-performance *::before,
+.ultra-performance *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+.ultra-performance .glass-card,
+.ultra-performance .btn-primary,
+.ultra-performance .btn-secondary,
+.ultra-performance .btn-danger,
+.ultra-performance .glow-accent {
+  box-shadow: none !important;
+}
+
+.ultra-performance .backdrop-blur-sm,
+.ultra-performance .backdrop-blur-md,
+.ultra-performance .backdrop-blur-xl,
+.ultra-performance .backdrop-blur-\[1\] {
+  backdrop-filter: none !important;
+}
+
+.ultra-performance .glass-card:hover {
+  border-color: var(--color-border) !important;
+}
+
 /* ── Glassmorphism Card ───────────────────────────── */
 .glass-card {
   background: var(--color-bg-card);

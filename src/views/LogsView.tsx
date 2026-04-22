@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import type { LogPayload } from "../types";
 
 type LogFilter = "all" | "errors" | "warnings" | "mods";
+type LogChunk = { content: string; truncated: boolean };
 
 export default function LogsView() {
   const { t } = useTranslation();
@@ -13,6 +15,7 @@ export default function LogsView() {
   const [filter, setFilter] = useState<LogFilter>("all");
   const [search, setSearch] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const tailInitializedRef = useRef(false);
 
   const loadLog = async () => {
     try {
@@ -28,12 +31,43 @@ export default function LogsView() {
 
   useEffect(() => { loadLog(); }, []);
 
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    const setup = async () => {
+      unlisten = await listen<LogChunk>("log-chunk", (event) => {
+        const chunk = event.payload;
+        setLog((prev) => {
+          const currentPath = prev?.path ?? "";
+          const nextContent = tailInitializedRef.current
+            ? `${prev?.content ?? ""}${chunk.content}`
+            : chunk.content;
+
+          tailInitializedRef.current = true;
+          return {
+            path: currentPath,
+            content: nextContent,
+          };
+        });
+      });
+    };
+
+    void setup();
+
+    return () => {
+      void invoke("stop_log_tail").catch(() => undefined);
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   const toggleTail = async () => {
     try {
       if (tailing) {
         await invoke("stop_log_tail");
+        tailInitializedRef.current = false;
         setTailing(false);
       } else {
+        tailInitializedRef.current = false;
         await invoke("start_log_tail");
         setTailing(true);
       }

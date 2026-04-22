@@ -34,7 +34,24 @@ impl CompressionFormat {
     }
 }
 
-fn has_alpha_channel(path: &Path) -> bool {
+#[derive(Clone, Copy)]
+struct DdsMetadata {
+    width: u32,
+    height: u32,
+    mipmaps: u32,
+    has_alpha: bool,
+    is_block_compressed: bool,
+}
+
+fn texture_has_alpha_channel(path: &Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext == "dds" {
+        return get_dds_metadata(path).map(|meta| meta.has_alpha).unwrap_or(true);
+    }
+    if ext == "jpg" || ext == "jpeg" {
+        return false;
+    }
+
     // Optimization: Read only the IHDR chunk of PNG to check color type
     // PNG Color Types: 4 (Gray+Alpha) and 6 (RGBA) have alpha channels.
     if let Ok(mut file) = fs::File::open(path) {
@@ -54,6 +71,106 @@ fn has_alpha_channel(path: &Path) -> bool {
 
 pub fn emit_progress(app: &AppHandle, payload: OptimizeProgress) {
     let _ = app.emit("optimize-progress", payload);
+}
+
+fn align_bc_dimension(value: u32) -> u32 {
+    value.max(4) / 4 * 4
+}
+
+fn should_fix_bc_4x4(path: &Path) -> bool {
+    get_dds_metadata(path)
+        .map(|meta| meta.is_block_compressed && (meta.width % 4 != 0 || meta.height % 4 != 0))
+        .unwrap_or(false)
+}
+
+fn format_texconv_error(file: &Path, output: Option<&std::process::Output>) -> String {
+    let file_name = file.file_name().and_then(|n| n.to_str()).unwrap_or("<unknown>");
+    match output {
+        Some(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let detail = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("texconv exited with status {}", output.status)
+            };
+            format!("{} failed: {}", file_name, detail)
+        }
+        None => format!("{} failed: could not start texconv.exe", file_name),
+    }
+}
+
+fn emit_texconv_error(app: &AppHandle, mod_info: &ModInfo, message: String) {
+    emit_progress(app, OptimizeProgress {
+        mod_id: mod_info.id.clone(),
+        status: "error".into(),
+        progress: 0,
+        message,
+    });
+}
+
+fn base_texconv_command(texconv: &Path, parent: &Path, format: &str) -> Command {
+    let mut cmd = Command::new(texconv);
+    cmd.args([
+        "-f", format,
+        "-y",
+        "-vflip",
+        "-m", "1",
+        "-if", "FANT",
+        "-gpu", "1",
+        "-o", &parent.to_string_lossy(),
+    ]);
+    cmd
+}
+
+fn run_texconv_file(
+    app: &AppHandle,
+    mod_info: &ModInfo,
+    texconv: &Path,
+    parent: &Path,
+    file: &Path,
+    format: &str,
+    resize: Option<(u32, u32)>,
+    fit_pow2: bool,
+) -> bool {
+    let mut cmd = base_texconv_command(texconv, parent, format);
+
+    if let Some((w, h)) = resize {
+        let w = align_bc_dimension(w);
+        let h = align_bc_dimension(h);
+        cmd.args(["-w", &w.to_string(), "-h", &h.to_string()]);
+    } else if fit_pow2 {
+        cmd.arg("-pow2");
+    }
+
+    if should_fix_bc_4x4(file) {
+        cmd.arg("--fix-bc-4x4");
+    }
+
+    cmd.arg(file);
+
+    match cmd.output() {
+        Ok(output) if output.status.success() => {
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "png" {
+                let dds_path = file.with_extension("dds");
+                if dds_path.exists() {
+                    let _ = fs::remove_file(file);
+                }
+            }
+            true
+        }
+        Ok(output) => {
+            emit_texconv_error(app, mod_info, format_texconv_error(file, Some(&output)));
+            false
+        }
+        Err(_) => {
+            emit_texconv_error(app, mod_info, format_texconv_error(file, None));
+            false
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,8 +262,8 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
                         png_files.push(e.path().to_path_buf());
                     } else if ext_lower == "dds" {
                         // Include DDS if it has mipmaps
-                        if let Ok((_, _, mips)) = get_dds_dimensions(e.path()) {
-                            if mips > 1 {
+                        if let Ok(meta) = get_dds_metadata(e.path()) {
+                            if meta.mipmaps > 1 {
                                 png_files.push(e.path().to_path_buf());
                             }
                         }
@@ -202,7 +319,7 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     groups_vec.par_iter().for_each(|(parent, files)| {
         match format {
             CompressionFormat::Smart => {
-                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
+                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
                 if !with_alpha.is_empty() {
                     run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, "BC7_UNORM", &completed, &failed_count, total);
                 }
@@ -211,7 +328,7 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
                 }
             }
             _ => {
-                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
+                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
                 if !with_alpha.is_empty() {
                     run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, format.to_texconv_format(true), &completed, &failed_count, total);
                 }
@@ -250,32 +367,47 @@ fn run_texconv_batch(
     total: usize,
 ) {
     for chunk in files.chunks(50) {
-        let mut cmd = Command::new(texconv);
-        cmd.args([
-            "-f", format,
-            "-y",
-            "-vflip",
-            "-pow2",
-            "-m", "1",
-            "-if", "FANT",
-            "-gpu", "1",
-            "-o", &parent.to_string_lossy(),
-        ]);
+        let mut cmd = base_texconv_command(texconv, parent, format);
+        cmd.arg("-pow2");
         
         for file in chunk {
+            if should_fix_bc_4x4(file) {
+                cmd.arg("--fix-bc-4x4");
+            }
             cmd.arg(file);
         }
 
         if let Ok(output) = cmd.output() {
             if output.status.success() {
                 for file in chunk {
-                    let _ = fs::remove_file(file);
+                    let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                        let _ = fs::remove_file(file);
+                    }
                 }
             } else {
-                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                let mut any_success = false;
+                for file in chunk {
+                    if run_texconv_file(app, mod_info, texconv, parent, file, format, None, true) {
+                        any_success = true;
+                    } else {
+                        failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
+                if !any_success {
+                    emit_texconv_error(app, mod_info, format!(
+                        "Batch failed in {}: {}",
+                        parent.display(),
+                        format_texconv_error(chunk[0], Some(&output))
+                    ));
+                }
             }
         } else {
-            failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            for file in chunk {
+                if !run_texconv_file(app, mod_info, texconv, parent, file, format, None, true) {
+                    failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
         }
 
         let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
@@ -481,8 +613,9 @@ pub fn resize_mod_textures(
         // SMART SKIP: If it's already a DDS, check if its dimensions are already within limit
         let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
         if ext == "dds" {
-            if let Ok((w, h, mips)) = get_dds_dimensions(&tex_path) {
-                if w <= max_res && h <= max_res && mips <= 1 {
+            if let Ok(meta) = get_dds_metadata(&tex_path) {
+                let bc_ready = !meta.is_block_compressed || (meta.width % 4 == 0 && meta.height % 4 == 0);
+                if meta.width <= max_res && meta.height <= max_res && meta.mipmaps <= 1 && bc_ready {
                     completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     continue;
                 }
@@ -496,7 +629,7 @@ pub fn resize_mod_textures(
     let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
 
     groups_vec.par_iter().for_each(|(parent, files)| {
-        let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
+        let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
 
         let process_group = |list: Vec<&PathBuf>, is_alpha: bool| {
             if list.is_empty() { return; }
@@ -566,34 +699,8 @@ fn run_single_texconv_resize(
     resized_count: &std::sync::atomic::AtomicUsize,
     total: usize,
 ) {
-    let mut cmd = Command::new(texconv);
-    cmd.args([
-        "-f", format,
-        "-y",
-        "-vflip",
-        "-w", &nw.to_string(),
-        "-h", &nh.to_string(),
-        "-pow2",
-        "-m", "1",
-        "-if", "FANT",
-        "-gpu", "1",
-        "-o", &parent.to_string_lossy(),
-    ]);
-    cmd.arg(file);
-
-    if let Ok(output) = cmd.output() {
-        if output.status.success() {
-            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if ext == "png" {
-                let dds_path = file.with_extension("dds");
-                if dds_path.exists() {
-                    let _ = fs::remove_file(file);
-                }
-            }
-            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
+    if run_texconv_file(app, mod_info, texconv, parent, file, format, Some((nw, nh)), false) {
+        resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     } else {
         failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -622,32 +729,8 @@ fn run_single_texconv_compress(
     resized_count: &std::sync::atomic::AtomicUsize,
     total: usize,
 ) {
-    let mut cmd = Command::new(texconv);
-    cmd.args([
-        "-f", format,
-        "-y",
-        "-vflip",
-        "-pow2",
-        "-m", "1",
-        "-if", "FANT",
-        "-gpu", "1",
-        "-o", &parent.to_string_lossy(),
-    ]);
-    cmd.arg(file);
-
-    if let Ok(output) = cmd.output() {
-        if output.status.success() {
-            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if ext == "png" {
-                let dds_path = file.with_extension("dds");
-                if dds_path.exists() {
-                    let _ = fs::remove_file(file);
-                }
-            }
-            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
+    if run_texconv_file(app, mod_info, texconv, parent, file, format, None, true) {
+        resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     } else {
         failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -667,24 +750,70 @@ fn run_single_texconv_compress(
 
 /// Helper to quickly read DDS width/height from the 128-byte header
 /// Offset 12: height (u32), Offset 16: width (u32)
-fn get_dds_dimensions(path: &Path) -> Result<(u32, u32, u32)> {
+fn get_dds_metadata(path: &Path) -> Result<DdsMetadata> {
     use std::io::Read;
     let mut f = fs::File::open(path)?;
-    let mut header = [0u8; 32];
+    let mut header = [0u8; 148];
     f.read_exact(&mut header)?;
     
-    let h = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
-    let w = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
-    let mips = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
-    
-    Ok((w, h, mips))
+    if &header[0..4] != b"DDS " {
+        anyhow::bail!("Invalid DDS header");
+    }
+
+    let height = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
+    let width = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
+    let mipmaps = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
+    let pf_flags = u32::from_le_bytes([header[80], header[81], header[82], header[83]]);
+    let four_cc = &header[84..88];
+    let alpha_mask = u32::from_le_bytes([header[104], header[105], header[106], header[107]]);
+
+    let has_alpha = if pf_flags & 0x1 != 0 || pf_flags & 0x2 != 0 {
+        true
+    } else if pf_flags & 0x4 != 0 {
+        match four_cc {
+            b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" => true,
+            b"DX10" => {
+                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
+                matches!(
+                    dxgi,
+                    2 | 10 | 11 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
+                        | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 74 | 75 | 77 | 78 | 97 | 98
+                )
+            }
+            _ => false,
+        }
+    } else {
+        alpha_mask != 0
+    };
+
+    let is_block_compressed = if pf_flags & 0x4 != 0 {
+        match four_cc {
+            b"DXT1" | b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" | b"ATI1" | b"ATI2" | b"BC4U"
+            | b"BC4S" | b"BC5U" | b"BC5S" => true,
+            b"DX10" => {
+                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
+                matches!(dxgi, 70..=84 | 94..=99)
+            }
+            _ => false,
+        }
+    } else {
+        false
+    };
+
+    Ok(DdsMetadata {
+        width,
+        height,
+        mipmaps,
+        has_alpha,
+        is_block_compressed,
+    })
 }
 
 fn get_image_dimensions(path: &Path) -> Result<(u32, u32)> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     if ext == "dds" {
-        let (w, h, _) = get_dds_dimensions(path)?;
-        return Ok((w, h));
+        let meta = get_dds_metadata(path)?;
+        return Ok((meta.width, meta.height));
     }
     
     let reader = image::ImageReader::open(path)?;

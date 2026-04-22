@@ -13,7 +13,7 @@ import {
   LifeBuoy
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { ModInfo } from '../types';
+import type { ModInfo, PerformanceLevel } from '../types';
 
 interface HubProvider {
   name: string;
@@ -31,18 +31,21 @@ interface HubManifest {
 }
 
 import { Dependency } from '../types';
-const SEARCH_DEBOUNCE_MS = 180;
+const PERFORMANCE_SEARCH_DEBOUNCE_MS = 180;
+const ULTRA_SEARCH_DEBOUNCE_MS = 320;
 const LARGE_HUB_THRESHOLD = 300;
 
 interface Props {
   installedMods: ModInfo[];
   onRefresh: () => void;
   toast: (msg: string, type?: string) => void;
-  performanceMode: boolean;
+  performanceLevel: PerformanceLevel;
 }
 
-export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, performanceMode }) => {
+export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, performanceLevel }) => {
   const { t } = useTranslation();
+  const performanceMode = performanceLevel !== 'normal';
+  const ultraPerformance = performanceLevel === 'ultra';
   const [manifest, setManifest] = useState<HubManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,12 +73,13 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
 
   useEffect(() => {
     const providerCount = manifest ? Object.values(manifest.providers).reduce((sum, group) => sum + Object.keys(group).length, 0) : 0;
+    const debounceMs = ultraPerformance ? ULTRA_SEARCH_DEBOUNCE_MS : PERFORMANCE_SEARCH_DEBOUNCE_MS;
     const handle = window.setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
-    }, providerCount > LARGE_HUB_THRESHOLD ? SEARCH_DEBOUNCE_MS : 0);
+    }, providerCount > LARGE_HUB_THRESHOLD ? debounceMs : 0);
 
     return () => window.clearTimeout(handle);
-  }, [searchQuery, manifest]);
+  }, [searchQuery, manifest, ultraPerformance]);
 
   const normalize = (value: string) => value.toLowerCase().replace(/[-_\s]/g, '');
 
@@ -144,7 +148,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
         <p className="text-gray-400 text-center max-w-md">{error}</p>
         <button 
           onClick={fetchHub}
-          className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg transition-colors"
+          className={`px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg ${ultraPerformance ? '' : 'transition-colors'}`}
         >
           {t('mod_hub.try_again')}
         </button>
@@ -175,12 +179,12 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
               placeholder={t('mod_hub.search_addons')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-black/40 border border-white/10 rounded-lg text-white w-64 focus:outline-none focus:border-pink-500/50 transition-all"
+              className={`pl-10 pr-4 py-2 bg-black/40 border border-white/10 rounded-lg text-white w-64 focus:outline-none focus:border-pink-500/50 ${ultraPerformance ? '' : 'transition-all'}`}
             />
           </div>
           <button 
             onClick={fetchHub}
-            className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
+            className={`p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white ${ultraPerformance ? '' : 'transition-colors'}`}
             title={t('common.refresh')}
           >
             <RefreshCw className="w-5 h-5" />
@@ -207,13 +211,13 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
                 {mods.map(mod => (
                   <div 
                     key={mod.name} 
-                    className="group bg-gray-900/40 border border-white/5 hover:border-pink-500/30 hover:bg-gray-800/60 rounded-xl p-5 transition-all duration-300 relative overflow-hidden"
+                    className={`group bg-gray-900/40 border border-white/5 rounded-xl p-5 relative overflow-hidden ${ultraPerformance ? '' : 'hover:border-pink-500/30 hover:bg-gray-800/60 transition-all duration-300'}`}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                    {!ultraPerformance && <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />}
 
                     <div className="relative flex flex-col h-full">
                       <div className="flex justify-between items-start mb-3">
-                        <h3 className="text-lg font-bold text-white group-hover:text-pink-300 transition-colors">
+                        <h3 className={`text-lg font-bold text-white ${ultraPerformance ? '' : 'group-hover:text-pink-300 transition-colors'}`}>
                           {mod.display_name || mod.name}
                         </h3>
                         <div className="flex gap-2">
@@ -222,7 +226,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
                               href={mod.info_url} 
                               target="_blank" 
                               rel="noreferrer"
-                              className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-md transition-all"
+                              className={`p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-md ${ultraPerformance ? '' : 'transition-all'}`}
                               title="LoversLab"
                             >
                               <ExternalLink className="w-4 h-4" />
@@ -257,7 +261,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
                           <button
                             onClick={() => handleInstall(mod)}
                             disabled={!!installing}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium ${ultraPerformance ? '' : 'transition-all'} ${
                               installing === mod.name
                                 ? 'bg-gray-700 text-gray-400'
                                 : 'bg-pink-600/20 text-pink-400 hover:bg-pink-600 hover:text-white border border-pink-500/30'
@@ -265,7 +269,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
                           >
                             {installing === mod.name ? (
                               <>
-                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <RefreshCw className={`w-4 h-4 ${ultraPerformance ? '' : 'animate-spin'}`} />
                                 {t('mod_hub.installing')}
                               </>
                             ) : (
@@ -288,10 +292,10 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
       
       {/* Dependency Warning Modal */}
       {missingDeps && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="glass-card max-w-md w-full p-8 border-red-500/30 shadow-[0_0_50px_rgba(239,68,68,0.2)] animate-in zoom-in-95 duration-300">
+        <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm ${ultraPerformance ? '' : 'animate-in fade-in duration-300'}`}>
+          <div className={`glass-card max-w-md w-full p-8 border-red-500/30 shadow-[0_0_50px_rgba(239,68,68,0.2)] ${ultraPerformance ? '' : 'animate-in zoom-in-95 duration-300'}`}>
             <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <LifeBuoy className="w-10 h-10 text-red-500 animate-bounce" />
+              <LifeBuoy className={`w-10 h-10 text-red-500 ${ultraPerformance ? '' : 'animate-bounce'}`} />
             </div>
             <h3 className="text-2xl font-black text-center text-white mb-2 uppercase tracking-tighter">{t('mod_hub.dependency_guard')}</h3>
             <p className="text-gray-400 text-center text-sm mb-6">
@@ -312,7 +316,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => setMissingDeps(null)}
-                className="py-3 px-4 bg-white/5 hover:bg-white/10 text-gray-400 font-bold rounded-xl transition-all uppercase text-xs tracking-widest"
+                className={`py-3 px-4 bg-white/5 hover:bg-white/10 text-gray-400 font-bold rounded-xl uppercase text-xs tracking-widest ${ultraPerformance ? '' : 'transition-all'}`}
               >
                 {t('mod_hub.ignore')}
               </button>
@@ -322,7 +326,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, p
                   setSearchQuery(first.display_name || first.package_id);
                   setMissingDeps(null);
                 }}
-                className="py-3 px-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all uppercase text-xs tracking-widest"
+                className={`py-3 px-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 uppercase text-xs tracking-widest ${ultraPerformance ? '' : 'transition-all'}`}
               >
                 {t('mod_hub.find_deps')}
               </button>
