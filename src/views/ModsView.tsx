@@ -86,13 +86,23 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   useEffect(() => {
     let unlisten: any;
     async function setup() {
-      unlisten = await listen<any>("optimize-progress", (event) => {
+      const u1 = await listen<any>("optimize-progress", (event) => {
         const { progress, message } = event.payload;
         setBatchStatus((prev) => {
           if (!prev) return null;
           return { ...prev, currentModName: message, progress };
         });
       });
+      const u2 = await listen<any>("download-progress", (event) => {
+        const { workshop_id, progress, message } = event.payload;
+        if (workshop_id === "system_restore") {
+          setBatchStatus((prev) => {
+            if (!prev) return null;
+            return { ...prev, currentModName: message, progress };
+          });
+        }
+      });
+      unlisten = () => { u1(); u2(); };
     }
     setup();
     return () => { if (unlisten) unlisten(); };
@@ -216,6 +226,23 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     try { await invoke("resize_all_local_mods", { maxRes: resizeRes }); toast(`All textures resized to max ${resizeRes}px!`, "success"); } catch (e: any) { toast(e?.toString() || "Resize failed", "error"); } finally { setBatchStatus(null); onRefresh(); }
   };
 
+  const batchRestore = async () => {
+    const localWithId = mods.filter(m => !m.path.includes("workshop") && m.remote_file_id);
+    if (localWithId.length === 0) { toast("No local mods with Workshop IDs found to restore.", "info"); return; }
+    if (!confirm(`🆘 EMERGENCY RESTORE\n\nThis will REDOWNLOAD and OVERWRITE ${localWithId.length} local mods from Steam to fix corruption.\n\nYour current local changes to these mods will be LOST. Continue?`)) return;
+    
+    setBatchStatus({ active: true, currentModName: "Initializing restore...", progress: 0, modIndex: 0, totalMods: localWithId.length, title: "🆘 EMERGENCY: Restoring Mods from Steam" });
+    try { 
+      await invoke("restore_all_local_mods"); 
+      toast("Emergency restore finished! Your mods are clean now.", "success"); 
+    } catch (e: any) { 
+      toast(e?.toString() || "Restore failed", "error"); 
+    } finally { 
+      setBatchStatus(null); 
+      onRefresh(); 
+    }
+  };
+
   const saveOrder = async () => {
     if (!localOrder) return;
     try {
@@ -286,6 +313,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn-secondary" style={{ padding: "10px" }} onClick={onRefresh} title="Refresh" disabled={!!batchStatus}>🔄</button>
           <button className="btn-secondary" onClick={runAnalysis} disabled={analyzing || !!batchStatus} title="Scan mods to find heavy textures">📊 {analyzing ? "Scanning..." : "Analyze Sizes"}</button>
+          <button className="btn-secondary" onClick={batchRestore} title="SOS: Redownload all local mods from Steam to fix corruption" style={{ color: "#ff4757", fontWeight: "bold" }} disabled={!!batchStatus}>🆘 Cấp cứu Mod</button>
           <button className="btn-secondary" onClick={batchRevert} title="Revert DDS back to PNG" style={{ color: "var(--color-warning)" }} disabled={!!batchStatus}>🔄 Revert DDS</button>
           <button className="btn-secondary" onClick={batchOptimize} title="Optimize PNG to DDS" disabled={!!batchStatus}>⚡ Optimize</button>
           <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(0,0,0,0.2)", padding: "4px 4px 4px 10px", borderRadius: 10, border: "1px solid var(--color-border)" }}>

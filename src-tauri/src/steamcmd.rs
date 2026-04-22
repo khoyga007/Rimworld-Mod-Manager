@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
+use tauri::Emitter;
 
 const RIMWORLD_APP_ID: &str = "294100";
 const STEAMCMD_URL: &str = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
@@ -339,3 +340,102 @@ fn extract_item_error(output: &str, id: &str) -> Option<String> {
 }
 
 
+pub async fn restore_local_mods_logic<F>(
+    app: tauri::AppHandle,
+    paths: crate::paths::RimWorldPaths,
+    mut on_progress: F,
+) -> Result<()>
+where
+    F: FnMut(u8, &str),
+{
+    on_progress(5, "Scanning local mods for Workshop IDs...");
+    let mod_list = crate::mods::list(&paths)?;
+    let to_restore: Vec<_> = mod_list.into_iter()
+        .filter(|m| m.source == crate::mods::ModSource::Local && m.remote_file_id.is_some())
+        .collect();
+
+    if to_restore.is_empty() {
+        return Err(anyhow!("No local mods with Workshop IDs found to restore."));
+    }
+
+    let ids: Vec<String> = to_restore.iter().filter_map(|m| m.remote_file_id.clone()).collect();
+    on_progress(10, &format!("Batch downloading {} mods from Steam...", ids.len()));
+
+    let app_h = app.clone();
+    let results = download_workshop_items_batch(&ids, move |ev| {
+        match ev {
+            BatchEvent::ItemDone(id) => {
+                let _ = app_h.emit("download-progress", crate::DownloadProgress {
+                    workshop_id: id.clone(),
+                    status: "downloading".to_string(),
+                    progress: 80,
+                    message: format!("Downloaded #{}", id),
+                    title: None,
+                    preview_url: None,
+                });
+            }
+            _ => {}
+        }
+    }).await?;
+
+    on_progress(70, "Applying fresh copies to Local folders...");
+    
+    let mut restored = 0;
+    let mut failed = 0;
+
+    for m in to_restore {
+        if let Some(remote_id) = &m.remote_file_id {
+            if let Some(Ok(fresh_dir)) = results.get(remote_id) {
+                let target_path = std::path::Path::new(&m.path);
+                
+                // Backup existing corrupted folder
+                let backup_path = target_path.with_extension("corrupted_bak");
+                if backup_path.exists() {
+                    let _ = std::fs::remove_dir_all(&backup_path);
+                }
+                
+                if let Ok(_) = std::fs::rename(target_path, &backup_path) {
+                    // Copy fresh dir to target path
+                    if let Ok(_) = std::fs::create_dir_all(target_path) {
+                        if let Ok(_) = copy_dir_recursive(fresh_dir, target_path) {
+                            let _ = std::fs::remove_dir_all(&backup_path);
+                            restored += 1;
+                        } else {
+                            // Rollback
+                            let _ = std::fs::remove_dir_all(target_path);
+                            let _ = std::fs::rename(&backup_path, target_path);
+                            failed += 1;
+                        }
+                    } else {
+                        let _ = std::fs::rename(&backup_path, target_path);
+                        failed += 1;
+                    }
+                } else {
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    crate::mods::clear_cache();
+    on_progress(100, &format!("Done! Restored {} mods, {} failed.", restored, failed));
+    
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let dest = dst.join(entry.file_name());
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest)?;
+        } else {
+            std::fs::copy(&path, &dest)?;
+        }
+    }
+    Ok(())
+}

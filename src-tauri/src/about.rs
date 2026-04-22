@@ -13,6 +13,7 @@ pub struct ModAbout {
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
     pub incompatible_with: Vec<String>,
+    pub published_file_id: Option<String>,
 }
 
 pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
@@ -64,6 +65,8 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
                     about.load_before.push(txt_lower);
                 } else if clean_path.contains("incompatibleWith") && clean_path.ends_with("li") {
                     about.incompatible_with.push(txt_lower);
+                } else if clean_path.ends_with("publishedFileId") {
+                    about.published_file_id = Some(txt);
                 }
             }
             Ok(Event::Eof) => break,

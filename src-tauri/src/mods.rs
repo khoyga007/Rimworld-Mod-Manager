@@ -274,6 +274,15 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         d.name.clone()
     };
 
+    let mut remote_file_id = d.published_file_id;
+    
+    // If it's in workshop folder and ID is a number, that's our remote ID
+    if remote_file_id.is_none() && source == ModSource::Workshop {
+        if id.chars().all(|c| c.is_ascii_digit()) {
+            remote_file_id = Some(id.clone());
+        }
+    }
+
     Ok(ModInfo {
         id,
         name,
@@ -288,7 +297,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         picture: picture_path,
         path: mod_path.to_string_lossy().into_owned(),
         descriptor_path: about_file.to_string_lossy().into_owned(),
-        remote_file_id: None,
+        remote_file_id,
         source,
         enabled,
         load_order: i32::MAX,

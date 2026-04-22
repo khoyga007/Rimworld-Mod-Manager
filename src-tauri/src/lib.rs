@@ -857,6 +857,49 @@ fn read_mod_image(path: String) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", mime, b64))
 }
 
+#[tauri::command]
+async fn restore_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    let app_h = app.clone();
+    
+    let emit_progress = |app: &tauri::AppHandle, pct: u8, msg: &str| {
+        let _ = app.emit("download-progress", DownloadProgress {
+            workshop_id: "system_restore".to_string(),
+            status: "restoring".to_string(),
+            progress: pct,
+            message: msg.to_string(),
+            title: Some("System Restore".into()),
+            preview_url: None,
+        });
+    };
+
+    emit_progress(&app, 1, "Initializing restore...");
+
+    tauri::async_runtime::spawn(async move {
+        let res = steamcmd::restore_local_mods_logic(app_h.clone(), p, |pct, msg| {
+            emit_progress(&app_h, pct, msg);
+        }).await;
+
+        match res {
+            Ok(_) => {
+                emit_progress(&app_h, 100, "Restore complete!");
+            }
+            Err(e) => {
+                let _ = app_h.emit("download-progress", DownloadProgress {
+                    workshop_id: "system_restore".to_string(),
+                    status: "error".to_string(),
+                    progress: 0,
+                    message: format!("Restore failed: {}", e),
+                    title: Some("System Restore".into()),
+                    preview_url: None,
+                });
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_paths = paths::detect().unwrap_or(RimWorldPaths {
@@ -885,6 +928,7 @@ pub fn run() {
             set_enabled_set,
             delete_mod,
             backup_mod_to_local,
+            restore_all_local_mods,
             optimize_mod_textures,
             optimize_all_local_mods,
             revert_all_local_mods,
