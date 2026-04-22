@@ -1,6 +1,6 @@
 [package]
 name = "rimworldmodmanager"
-version = "0.4.2"
+version = "0.4.9"
 description = "RimWorld Mod Manager"
 authors = ["you"]
 edition = "2021"
@@ -40,3 +40,4 @@ image = "0.25.10"
 image_dds = "0.7.2"
 rayon = "1.12.0"
 once_cell = "1.21.4"
+toml = "0.8"

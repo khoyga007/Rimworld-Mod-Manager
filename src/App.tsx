@@ -9,9 +9,9 @@ import LogsView from "./views/LogsView";
 import LoadOrderView from "./views/LoadOrderView";
 import DownloadView from "./views/DownloadView";
 import CollectionsView from "./views/CollectionsView";
-import SaveGameView from "./views/SaveGameView";
+import { ModHubView } from "./views/ModHubView";
 
-type View = "mods" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
+type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
 
 export default function App() {
   const [view, setView] = useState<View>("mods");
@@ -196,6 +196,7 @@ export default function App() {
             )}
 
             {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
+            {view === "hub" && <ModHubView />}
             {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
             {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}

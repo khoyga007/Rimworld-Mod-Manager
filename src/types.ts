@@ -5,6 +5,10 @@ export interface ModInfo {
   version?: string;
   supported_version?: string;
   tags: string[];
+  custom_tags: string[];
+  custom_note: string;
+  workshop_name?: string;
+  created_at: number;
   dependencies: string[];
   load_after: string[];
   load_before: string[];

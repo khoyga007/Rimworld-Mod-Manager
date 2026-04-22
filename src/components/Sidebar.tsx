@@ -1,5 +1,5 @@
 
-type View = "mods" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
+type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
 
 interface Props {
   currentView: View;
@@ -11,6 +11,7 @@ interface Props {
 
 const NAV: { id: View; icon: string; label: string }[] = [
   { id: "mods", icon: "📦", label: "Mods" },
+  { id: "hub", icon: "✨", label: "Mod Hub" },
   { id: "download", icon: "⬇", label: "Download" },
   { id: "collections", icon: "📁", label: "Presets" },
   { id: "loadorder", icon: "📊", label: "Load Order" },

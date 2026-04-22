@@ -13,8 +13,9 @@ mod workshop;
 mod optimize;
 
 use paths::RimWorldPaths;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use base64::Engine as _;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, State};
@@ -71,13 +72,35 @@ fn set_mod_enabled(state: State<AppState>, id: String, enabled: bool) -> Result<
 #[tauri::command]
 fn set_all_mods_enabled(state: State<AppState>, enabled: bool) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
-    mods::set_all_enabled(&p, enabled).map_err(|e| e.to_string())
+    mods::set_all_enabled(&p, enabled).map_err(|e| e.to_string())?;
+    mods::clear_cache();
+    Ok(())
 }
 
 #[tauri::command]
 fn set_load_order(state: State<AppState>, ids: Vec<String>) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
-    mods::set_order(&p, &ids).map_err(|e| e.to_string())
+    mods::set_order(&p, &ids).map_err(|e| e.to_string())?;
+    mods::clear_cache();
+    Ok(())
+}
+
+#[tauri::command]
+fn set_mod_tags(state: State<AppState>, id: String, tags: Vec<String>) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    mods::set_mod_tags(&p, &id, tags).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_mod_note(state: State<AppState>, id: String, note: String) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    mods::set_mod_note(&p, &id, note).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_mod_workshop_name(state: State<AppState>, id: String, name: String) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    mods::set_mod_workshop_name(&p, &id, name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -104,7 +127,7 @@ async fn backup_mod_to_local(state: State<'_, AppState>, id: String) -> Result<(
 }
 
 #[tauri::command]
-async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, format: optimize::CompressionFormat) -> Result<(), String> {
     // Auto-download texconv if needed
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
@@ -117,7 +140,7 @@ async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>
         .ok_or_else(|| "Mod not found".to_string())?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        optimize::optimize_mod_textures(app, p, target_mod)
+        optimize::optimize_mod_textures(app, p, target_mod, format)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -125,7 +148,7 @@ async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>
 }
 
 #[tauri::command]
-async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, format: optimize::CompressionFormat) -> Result<(), String> {
     // Auto-download texconv if needed
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
@@ -141,7 +164,7 @@ async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppStat
 
     tauri::async_runtime::spawn_blocking(move || {
         for m in local_mods {
-            let _ = optimize::optimize_mod_textures(app.clone(), p.clone(), m);
+            let _ = optimize::optimize_mod_textures(app.clone(), p.clone(), m, format);
         }
         Ok(())
     })
@@ -181,7 +204,7 @@ async fn download_texconv() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, max_res: u32) -> Result<(), String> {
+async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, max_res: u32, format: optimize::CompressionFormat) -> Result<(), String> {
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
     }
@@ -192,7 +215,7 @@ async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, 
         .ok_or_else(|| "Mod not found".to_string())?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        optimize::resize_mod_textures(app, p, target_mod, max_res)
+        optimize::resize_mod_textures(app, p, target_mod, max_res, format)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -201,7 +224,7 @@ async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, 
 }
 
 #[tauri::command]
-async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, max_res: u32) -> Result<(), String> {
+async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, max_res: u32, format: optimize::CompressionFormat) -> Result<(), String> {
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
     }
@@ -216,7 +239,7 @@ async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>
 
     let join_result = tauri::async_runtime::spawn_blocking(move || {
         for m in local_mods {
-            let _ = optimize::resize_mod_textures(app.clone(), p.clone(), m, max_res);
+            let _ = optimize::resize_mod_textures(app.clone(), p.clone(), m, max_res, format);
         }
         Ok::<(), anyhow::Error>(())
     })
@@ -499,6 +522,9 @@ async fn download_workshop_mod(
                                 let _ = std::fs::remove_dir_all(&top);
                             }
                         }
+                        if let Some(t) = title_opt.clone() {
+                            let _ = mods::set_mod_workshop_name(&paths_cloned, &id_for_task, t);
+                        }
                         let _ = app_h.emit(
                             "download-progress",
                             DownloadProgress {
@@ -634,7 +660,10 @@ async fn download_workshop_mods_batch(
                     });
                     let about = build_about_from_folder(folder, &meta, id);
                     match mods::install_from_folder(&paths_cloned, folder, id, &about) {
-                        Ok(_) => emit(&app_h, id, "done", 100, "Installed", &meta_map_task),
+                        Ok(_) => {
+                            let _ = mods::set_mod_workshop_name(&paths_cloned, id, meta.title.clone());
+                            emit(&app_h, id, "done", 100, "Installed", &meta_map_task);
+                        },
                         Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e), &meta_map_task),
                     }
                 }
@@ -675,9 +704,12 @@ async fn download_workshop_mods_batch(
                                         let _ = std::fs::remove_dir_all(&top);
                                     }
                                 }
-                                emit(&app_h, id, "done", 100, "Installed", &meta_map_task);
-                            }
-                            Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e), &meta_map_task),
+                                    if let Some(meta) = meta_map_task.get(id) {
+                                        let _ = mods::set_mod_workshop_name(&paths_cloned, id, meta.title.clone());
+                                    }
+                                    emit(&app_h, id, "done", 100, "Installed", &meta_map_task);
+                                }
+                                Err(e) => emit(&app_h, id, "error", 0, &format!("Install failed: {}", e), &meta_map_task),
                         }
                     }
                     Err(e) => emit(&app_h, id, "error", 0, &format!("{}", e), &meta_map_task),
@@ -732,11 +764,21 @@ fn preview_auto_sort(state: State<AppState>) -> Result<SortPreview, String> {
 }
 
 #[tauri::command]
-fn apply_auto_sort(state: State<AppState>) -> Result<Vec<String>, String> {
+fn apply_auto_sort(state: State<AppState>, active_ids: Option<Vec<String>>) -> Result<Vec<String>, String> {
     let p = state.paths.lock().unwrap().clone();
-    let ms = mods::list(&p).map_err(|e| e.to_string())?;
+    let mut ms = mods::list(&p).map_err(|e| e.to_string())?;
+    
+    // If frontend provided currently active IDs (unsaved changes), respect them
+    if let Some(ids) = active_ids {
+        let ids_lower: std::collections::HashSet<String> = ids.iter().map(|s| s.to_lowercase()).collect();
+        for m in ms.iter_mut() {
+            m.enabled = ids_lower.contains(&m.id.to_lowercase());
+        }
+    }
+
     let suggested = auto_sort::sort_mods(&ms);
     mods::set_order(&p, &suggested).map_err(|e| e.to_string())?;
+    mods::clear_cache();
     Ok(suggested)
 }
 
@@ -814,7 +856,9 @@ fn apply_preset(state: State<AppState>, id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     config.active_mods = preset.mod_ids.clone();
     mods::write_mods_config(std::path::Path::new(&p.mods_config_path), &config)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    mods::clear_cache();
+    Ok(())
 }
 
 #[tauri::command]
@@ -902,6 +946,91 @@ async fn restore_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct HubProvider {
+    name: String,
+    display_name: Option<String>,
+    description: Option<String>,
+    url: String,
+    authors: Option<Vec<String>>,
+    info_url: Option<String>,
+    branch: Option<String>,
+    disabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct HubManifest {
+    providers: std::collections::HashMap<String, std::collections::HashMap<String, HubProvider>>,
+}
+
+#[tauri::command]
+async fn fetch_mod_hub() -> Result<HubManifest, String> {
+    let url = "https://gitgud.io/AblativeAbsolute/libidinous_loader_providers/-/raw/v1/providers.toml";
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    
+    let manifest: HubManifest = toml::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(manifest)
+}
+
+#[tauri::command]
+async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    
+    // We'll use ZIP download as a simple alternative to Git cloning
+    // GitGud/GitHub/GitLab format: {url}/-/archive/{branch}/{name}-{branch}.zip
+    let base_url = provider.url.trim_end_matches(".git");
+    let branch = provider.branch.as_deref().unwrap_or("master");
+    
+    // If it's GitHub, the URL is slightly different: {url}/archive/refs/heads/{branch}.zip
+    let final_url = if provider.url.contains("github.com") {
+        format!("{}/archive/refs/heads/{}.zip", base_url, branch)
+    } else {
+        format!("{}/-/archive/{}/{}-{}.zip", base_url, branch, provider.name, branch)
+    };
+
+    println!("[HUB] Downloading from: {}", final_url);
+    
+    let client = reqwest::Client::new();
+    let resp = client.get(&final_url).send().await.map_err(|e| e.to_string())?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    
+    // Extract to a temp folder and then install
+    let temp_dir = std::env::temp_dir().join(format!("rimhub_{}", provider.name));
+    if temp_dir.exists() { let _ = fs::remove_dir_all(&temp_dir); }
+    fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    archive.extract(&temp_dir).map_err(|e| e.to_string())?;
+    
+    // Find the actual mod folder (ZIPs often have a nested parent folder)
+    let mut mod_folder = temp_dir.clone();
+    if let Ok(entries) = fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if entry.path().join("About").exists() {
+                    mod_folder = entry.path();
+                    break;
+                }
+            }
+        }
+    }
+
+    // Install using existing logic
+    mods::install_from_folder(&p, &mod_folder, &provider.name, &about::ModAbout {
+        name: provider.display_name.unwrap_or(provider.name.clone()),
+        author: provider.authors.map(|a| a.join(", ")).unwrap_or_default(),
+        ..Default::default()
+    }).map_err(|e| e.to_string())?;
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&temp_dir);
+    mods::clear_cache();
+    
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_paths = paths::detect().unwrap_or(RimWorldPaths {
@@ -953,6 +1082,8 @@ pub fn run() {
             apply_auto_sort,
             analyze_load_order,
             check_mod_updates,
+            fetch_mod_hub,
+            install_hub_mod,
             list_presets,
             create_preset,
             update_preset,
@@ -965,8 +1096,10 @@ pub fn run() {
             read_mod_image,
             resize_mod_textures,
             resize_all_local_mods,
+            set_mod_tags,
+            set_mod_note,
+            set_mod_workshop_name,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

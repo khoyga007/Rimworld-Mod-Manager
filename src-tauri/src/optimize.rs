@@ -16,6 +16,43 @@ pub struct OptimizeProgress {
     pub message: String,
 }
 
+#[derive(serde::Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CompressionFormat {
+    Smart,
+    Bc7,
+    Bc1,
+}
+
+impl CompressionFormat {
+    pub fn to_texconv_format(&self, has_alpha: bool) -> &'static str {
+        match self {
+            CompressionFormat::Bc7 => "BC7_UNORM",
+            CompressionFormat::Bc1 => if has_alpha { "BC3_UNORM" } else { "BC1_UNORM" },
+            CompressionFormat::Smart => if has_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
+        }
+    }
+}
+
+fn has_alpha_channel(path: &Path) -> bool {
+    // We only check PNGs for alpha to decide between BC1 and BC7/BC3
+    if let Ok(reader) = image::ImageReader::open(path) {
+        if let Some(format) = reader.format() {
+            if format == image::ImageFormat::Png {
+                // Re-open for decoding metadata
+                if let Ok(reader) = image::ImageReader::open(path) {
+                    if let Ok(guessed) = reader.with_guessed_format() {
+                        if let Ok(img) = guessed.decode() {
+                            return img.color().has_alpha();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    true // Default to true (safe bet)
+}
+
 pub fn emit_progress(app: &AppHandle, payload: OptimizeProgress) {
     let _ = app.emit("optimize-progress", payload);
 }
@@ -69,7 +106,7 @@ pub async fn ensure_texconv() -> Result<PathBuf> {
 // Optimize: PNG → DDS via texconv.exe
 // ---------------------------------------------------------------------------
 
-pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModInfo) -> Result<()> {
+pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModInfo, format: CompressionFormat) -> Result<()> {
     if mod_info.path.contains("workshop") {
         anyhow::bail!("Cannot optimize Workshop mods directly. Please 'Copy to Local' first.");
     }
@@ -103,9 +140,17 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     for entry in WalkDir::new(&textures_dir) {
         if let Ok(e) = entry {
             if e.path().is_file() {
-                if let Some(ext) = e.path().extension() {
-                    if ext.to_string_lossy().eq_ignore_ascii_case("png") {
+                if let Some(ext) = e.path().extension().and_then(|s| s.to_str()) {
+                    let ext_lower = ext.to_lowercase();
+                    if ext_lower == "png" {
                         png_files.push(e.path().to_path_buf());
+                    } else if ext_lower == "dds" {
+                        // Include DDS if it has mipmaps
+                        if let Ok((_, _, mips)) = get_dds_dimensions(e.path()) {
+                            if mips > 1 {
+                                png_files.push(e.path().to_path_buf());
+                            }
+                        }
                     }
                 }
             }
@@ -117,7 +162,7 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
             mod_id: mod_info.id.clone(),
             status: "done".into(),
             progress: 100,
-            message: "No PNG files to optimize.".into(),
+            message: "No textures need optimization.".into(),
         });
         return Ok(());
     }
@@ -126,70 +171,55 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let failed_count = std::sync::atomic::AtomicUsize::new(0);
 
-    // Group PNG files by their parent directory to batch texconv calls
+    // Group files by their parent directory to batch texconv calls
     let mut groups: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
-    for png_path in png_files {
-        let dds_path = png_path.with_extension("dds");
-        // Skip if DDS exists and is newer than PNG
-        if dds_path.exists() {
-            if let (Ok(m_png), Ok(m_dds)) = (fs::metadata(&png_path), fs::metadata(&dds_path)) {
-                if let (Ok(t_png), Ok(t_dds)) = (m_png.modified(), m_dds.modified()) {
-                    if t_dds >= t_png {
-                        let _ = fs::remove_file(&png_path);
-                        completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        continue;
+    for tex_path in png_files {
+        let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        
+        if ext == "png" || ext == "jpg" || ext == "jpeg" {
+            let dds_path = tex_path.with_extension("dds");
+            // Skip if DDS exists and is newer than original
+            if dds_path.exists() {
+                if let (Ok(m_orig), Ok(m_dds)) = (fs::metadata(&tex_path), fs::metadata(&dds_path)) {
+                    if let (Ok(t_orig), Ok(t_dds)) = (m_orig.modified(), m_dds.modified()) {
+                        if t_dds >= t_orig {
+                            // If original is PNG and DDS is newer, we can safely remove PNG
+                            let _ = fs::remove_file(&tex_path);
+                            completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            continue;
+                        }
                     }
                 }
             }
         }
-        if let Some(parent) = png_path.parent() {
-            groups.entry(parent.to_path_buf()).or_default().push(png_path);
+        
+        if let Some(parent) = tex_path.parent() {
+            groups.entry(parent.to_path_buf()).or_default().push(tex_path);
         }
     }
 
     let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
     
-    // Process each directory group in parallel
     groups_vec.par_iter().for_each(|(parent, files)| {
-        // Process in chunks of 50 to avoid command line length limits
-        for chunk in files.chunks(50) {
-            let mut cmd = Command::new(&texconv);
-            cmd.args([
-                "-f", "BC7_UNORM",
-                "-y",
-                "-vflip",
-                "-pow2",
-                "-m", "0",
-                "-if", "FANT",
-                "-gpu", "1",
-                "-sepalpha",
-                "-o", &parent.to_string_lossy(),
-            ]);
-            
-            for file in chunk {
-                cmd.arg(file);
-            }
-
-            if let Ok(output) = cmd.output() {
-                if output.status.success() {
-                    for file in chunk {
-                        let _ = fs::remove_file(file);
-                    }
-                } else {
-                    failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+        match format {
+            CompressionFormat::Smart => {
+                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
+                if !with_alpha.is_empty() {
+                    run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, "BC7_UNORM", &completed, &failed_count, total);
                 }
-            } else {
-                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                if !no_alpha.is_empty() {
+                    run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, "BC1_UNORM", &completed, &failed_count, total);
+                }
             }
-
-            let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
-            let pct = ((c as f32 / total as f32) * 100.0) as u8;
-            emit_progress(&app, OptimizeProgress {
-                mod_id: mod_info.id.clone(),
-                status: "optimizing".into(),
-                progress: pct,
-                message: format!("Optimizing {}/{} textures...", c, total),
-            });
+            _ => {
+                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
+                if !with_alpha.is_empty() {
+                    run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, format.to_texconv_format(true), &completed, &failed_count, total);
+                }
+                if !no_alpha.is_empty() {
+                    run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, format.to_texconv_format(false), &completed, &failed_count, total);
+                }
+            }
         }
     });
 
@@ -207,6 +237,57 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     });
 
     Ok(())
+}
+
+fn run_texconv_batch(
+    app: &AppHandle,
+    mod_info: &ModInfo,
+    texconv: &Path,
+    parent: &Path,
+    files: &[&PathBuf],
+    format: &str,
+    completed: &std::sync::atomic::AtomicUsize,
+    failed_count: &std::sync::atomic::AtomicUsize,
+    total: usize,
+) {
+    for chunk in files.chunks(50) {
+        let mut cmd = Command::new(texconv);
+        cmd.args([
+            "-f", format,
+            "-y",
+            "-vflip",
+            "-pow2",
+            "-m", "1",
+            "-if", "FANT",
+            "-gpu", "1",
+            "-o", &parent.to_string_lossy(),
+        ]);
+        
+        for file in chunk {
+            cmd.arg(file);
+        }
+
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                for file in chunk {
+                    let _ = fs::remove_file(file);
+                }
+            } else {
+                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+        } else {
+            failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
+        let pct = ((c as f32 / total as f32) * 100.0) as u8;
+        emit_progress(app, OptimizeProgress {
+            mod_id: mod_info.id.clone(),
+            status: "optimizing".into(),
+            progress: pct,
+            message: format!("Optimizing {}/{} textures...", c, total),
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +416,7 @@ pub fn resize_mod_textures(
     _paths: RimWorldPaths,
     mod_info: ModInfo,
     max_res: u32,
+    format: CompressionFormat,
 ) -> Result<()> {
     if mod_info.path.contains("workshop") {
         anyhow::bail!("Cannot resize Workshop mods directly. Please 'Copy to Local' first.");
@@ -401,8 +483,8 @@ pub fn resize_mod_textures(
         // SMART SKIP: If it's already a DDS, check if its dimensions are already within limit
         let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
         if ext == "dds" {
-            if let Ok((w, h)) = get_dds_dimensions(&tex_path) {
-                if w <= max_res && h <= max_res {
+            if let Ok((w, h, mips)) = get_dds_dimensions(&tex_path) {
+                if w <= max_res && h <= max_res && mips <= 1 {
                     completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     continue;
                 }
@@ -417,54 +499,42 @@ pub fn resize_mod_textures(
     let max_res_str = max_res.to_string();
 
     groups_vec.par_iter().for_each(|(parent, files)| {
-        for chunk in files.chunks(50) {
-            let mut cmd = Command::new(&texconv);
-            cmd.args([
-                "-f", "BC7_UNORM",
-                "-y",
-                "-vflip",
-                "-w", &max_res_str,
-                "-h", &max_res_str,
-                "-pow2",
-                "-m", "0",
-                "-if", "FANT",
-                "-gpu", "1",
-                "-sepalpha",
-                "-o", &parent.to_string_lossy(),
-            ]);
+        let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
 
-            for file in chunk {
-                cmd.arg(file);
-            }
-
-            if let Ok(output) = cmd.output() {
-                if output.status.success() {
-                    for file in chunk {
-                        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                        if ext == "png" {
-                            let dds_path = file.with_extension("dds");
-                            if dds_path.exists() {
-                                let _ = fs::remove_file(file);
-                            }
-                        }
+        let process_group = |list: Vec<&PathBuf>, is_alpha: bool| {
+            if list.is_empty() { return; }
+            
+            let mut need_resize = Vec::new();
+            let mut only_compress = Vec::new();
+            
+            for f in list {
+                if let Ok((w, h)) = get_image_dimensions(f) {
+                    if w > max_res || h > max_res {
+                        need_resize.push(f);
+                    } else {
+                        only_compress.push(f);
                     }
-                    resized_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
                 } else {
-                    failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                    need_resize.push(f);
                 }
-            } else {
-                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
             }
+            
+            let f_str = match format {
+                CompressionFormat::Smart => if is_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
+                _ => format.to_texconv_format(is_alpha),
+            };
 
-            let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
-            let pct = ((c as f32 / total as f32) * 100.0) as u8;
-            emit_progress(&app, OptimizeProgress {
-                mod_id: mod_info.id.clone(),
-                status: "resizing".into(),
-                progress: pct,
-                message: format!("Resizing {}/{} textures (max {}px)...", c, total, max_res_str),
-            });
-        }
+            if !need_resize.is_empty() {
+                run_texconv_batch_resize(&app, &mod_info, &texconv, parent, &need_resize, f_str, &max_res_str, &completed, &failed_count, &resized_count, total);
+            }
+            if !only_compress.is_empty() {
+                run_texconv_batch(&app, &mod_info, &texconv, parent, &only_compress, f_str, &completed, &failed_count, total);
+                resized_count.fetch_add(only_compress.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+        };
+
+        process_group(with_alpha, true);
+        process_group(no_alpha, false);
     });
 
     let failed = failed_count.load(std::sync::atomic::Ordering::Relaxed);
@@ -484,16 +554,91 @@ pub fn resize_mod_textures(
     Ok(())
 }
 
+fn run_texconv_batch_resize(
+    app: &AppHandle,
+    mod_info: &ModInfo,
+    texconv: &Path,
+    parent: &Path,
+    files: &[&PathBuf],
+    format: &str,
+    max_res_str: &str,
+    completed: &std::sync::atomic::AtomicUsize,
+    failed_count: &std::sync::atomic::AtomicUsize,
+    resized_count: &std::sync::atomic::AtomicUsize,
+    total: usize,
+) {
+    for chunk in files.chunks(50) {
+        let mut cmd = Command::new(texconv);
+        cmd.args([
+            "-f", format,
+            "-y",
+            "-vflip",
+            "-w", max_res_str,
+            "-h", max_res_str,
+            "-pow2",
+            "-m", "1",
+            "-if", "FANT",
+            "-gpu", "1",
+            "-o", &parent.to_string_lossy(),
+        ]);
+
+        for file in chunk {
+            cmd.arg(file);
+        }
+
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                for file in chunk {
+                    let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    if ext == "png" {
+                        let dds_path = file.with_extension("dds");
+                        if dds_path.exists() {
+                            let _ = fs::remove_file(file);
+                        }
+                    }
+                }
+                resized_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            } else {
+                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+        } else {
+            failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
+        let pct = ((c as f32 / total as f32) * 100.0) as u8;
+        emit_progress(app, OptimizeProgress {
+            mod_id: mod_info.id.clone(),
+            status: "resizing".into(),
+            progress: pct,
+            message: format!("Resizing {}/{} textures (max {}px)...", c, total, max_res_str),
+        });
+    }
+}
+
 /// Helper to quickly read DDS width/height from the 128-byte header
 /// Offset 12: height (u32), Offset 16: width (u32)
-fn get_dds_dimensions(path: &Path) -> Result<(u32, u32)> {
+fn get_dds_dimensions(path: &Path) -> Result<(u32, u32, u32)> {
     use std::io::Read;
     let mut f = fs::File::open(path)?;
-    let mut header = [0u8; 20];
+    let mut header = [0u8; 32];
     f.read_exact(&mut header)?;
     
     let h = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
     let w = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
+    let mips = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
     
+    Ok((w, h, mips))
+}
+
+fn get_image_dimensions(path: &Path) -> Result<(u32, u32)> {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext == "dds" {
+        let (w, h, _) = get_dds_dimensions(path)?;
+        return Ok((w, h));
+    }
+    
+    let reader = image::ImageReader::open(path)?;
+    let (w, h) = reader.into_dimensions()?;
     Ok((w, h))
 }

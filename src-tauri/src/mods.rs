@@ -48,6 +48,79 @@ pub struct ModInfo {
     pub enabled: bool,
     pub load_order: i32,
     pub size_bytes: u64,
+    pub custom_tags: Vec<String>,
+    pub custom_note: String,
+    pub workshop_name: Option<String>,
+    pub created_at: u64,
+}
+
+// Custom Metadata Storage (Tags + Notes + Workshop Names)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CustomMetadata {
+    pub tags: Vec<String>,
+    pub note: String,
+    pub workshop_name: Option<String>,
+    pub first_seen_at: Option<u64>,
+}
+
+type CustomMetadataMap = std::collections::HashMap<String, CustomMetadata>;
+
+fn read_custom_metadata(paths: &RimWorldPaths) -> CustomMetadataMap {
+    let p = PathBuf::from(&paths.mods_config_path).parent().unwrap().join("custom_metadata.json");
+    if let Ok(txt) = fs::read_to_string(p) {
+        return serde_json::from_str(&txt).unwrap_or_default();
+    }
+    // Migration from old custom_tags.json if exists
+    let old_p = PathBuf::from(&paths.mods_config_path).parent().unwrap().join("custom_tags.json");
+    if let Ok(txt) = fs::read_to_string(&old_p) {
+        let old_map: std::collections::HashMap<String, Vec<String>> = serde_json::from_str(&txt).unwrap_or_default();
+        let mut new_map = CustomMetadataMap::new();
+        for (id, tags) in old_map {
+            new_map.insert(id, CustomMetadata { 
+                tags, 
+                note: String::new(), 
+                workshop_name: None, 
+                first_seen_at: Some(1), // Migrated mods are old
+            });
+        }
+        let _ = fs::remove_file(old_p); // Clean up
+        return new_map;
+    }
+    CustomMetadataMap::new()
+}
+
+fn write_custom_metadata(paths: &RimWorldPaths, metadata: &CustomMetadataMap) -> Result<()> {
+    let p = PathBuf::from(&paths.mods_config_path).parent().unwrap().join("custom_metadata.json");
+    let txt = serde_json::to_string(metadata)?;
+    fs::write(p, txt)?;
+    Ok(())
+}
+
+pub fn set_mod_tags(paths: &RimWorldPaths, id: &str, tags: Vec<String>) -> Result<()> {
+    let mut map = read_custom_metadata(paths);
+    let entry = map.entry(id.to_string()).or_default();
+    entry.tags = tags;
+    write_custom_metadata(paths, &map)?;
+    clear_cache();
+    Ok(())
+}
+
+pub fn set_mod_note(paths: &RimWorldPaths, id: &str, note: String) -> Result<()> {
+    let mut map = read_custom_metadata(paths);
+    let entry = map.entry(id.to_string()).or_default();
+    entry.note = note;
+    write_custom_metadata(paths, &map)?;
+    clear_cache();
+    Ok(())
+}
+
+pub fn set_mod_workshop_name(paths: &RimWorldPaths, id: &str, name: String) -> Result<()> {
+    let mut map = read_custom_metadata(paths);
+    let entry = map.entry(id.to_string()).or_default();
+    entry.workshop_name = Some(name);
+    write_custom_metadata(paths, &map)?;
+    clear_cache();
+    Ok(())
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -147,6 +220,8 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
         }
     }
 
+    let mut metadata = read_custom_metadata(paths);
+    let mut metadata_changed = false;
     let mut dirs_to_scan = Vec::new();
     
     if let Some(gd) = &paths.game_dir {
@@ -195,8 +270,30 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
                     let about_file = mod_path.join("About").join("About.xml");
                     if about_file.exists() {
                         match load_mod(&about_file, &mod_path, &config, source.clone()) {
-                            Ok(info) => {
+                            Ok(mut info) => {
                                 if seen_ids.insert(info.id.clone()) {
+                                    if let Some(m) = metadata.get_mut(&info.id) {
+                                        if m.first_seen_at.is_none() {
+                                            m.first_seen_at = Some(1); // Existing mod, mark as old
+                                            metadata_changed = true;
+                                        }
+                                        info.custom_tags = m.tags.clone();
+                                        info.custom_note = m.note.clone();
+                                        info.workshop_name = m.workshop_name.clone();
+                                        info.created_at = m.first_seen_at.unwrap_or(0);
+                                    } else {
+                                        // New mod entirely
+                                        let now = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_secs();
+                                        metadata.insert(info.id.clone(), CustomMetadata {
+                                            first_seen_at: Some(now),
+                                            ..Default::default()
+                                        });
+                                        info.created_at = now;
+                                        metadata_changed = true;
+                                    }
                                     out.push(info);
                                     count += 1;
                                 }
@@ -231,6 +328,10 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     }
 
     out.sort_by_key(|m| m.load_order);
+
+    if metadata_changed {
+        let _ = write_custom_metadata(paths, &metadata);
+    }
 
     {
         let mut cache = MOD_CACHE.lock().unwrap();
@@ -296,6 +397,18 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         }
     }
 
+    let mut custom_tags = vec![];
+    
+    // 3. Auto-detect "Third-Party / External" mods (The "Tà Đạo" stuff like RJW)
+    let is_external = remote_file_id.is_none() && source == ModSource::Local && !REQUIRED_MOD_IDS.contains(&id_lower.as_str());
+    if is_external {
+        custom_tags.push("Third-Party".to_string());
+        // Special sub-tag for RJW ecosystem
+        if id_lower.contains("rjw") || name.to_lowercase().contains("rimjobworld") {
+            custom_tags.push("RJW Ecosystem".to_string());
+        }
+    }
+
     Ok(ModInfo {
         id,
         name,
@@ -315,6 +428,10 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         enabled,
         load_order: i32::MAX,
         size_bytes,
+        custom_tags,
+        custom_note: String::new(),
+        workshop_name: None,
+        created_at: 0,
     })
 }
 
@@ -378,14 +495,18 @@ pub fn set_enabled_set(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
 
 pub fn set_order(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
     let mut config = read_mods_config(Path::new(&paths.mods_config_path))?;
-    let enabled_lower: std::collections::HashSet<String> = config.active_mods.iter().map(|a| a.to_lowercase()).collect();
-    let mut new_order: Vec<String> = ids.iter().filter(|id| enabled_lower.contains(&id.to_lowercase())).cloned().collect();
-    for id in config.active_mods.iter() {
+    
+    // Use original casing from ids if provided, fallback to config casing
+    let mut new_order: Vec<String> = ids.iter().cloned().collect();
+    
+    // Ensure all currently active mods are in the new_order, preserving their original casing
+    for id in &config.active_mods {
         let id_lower = id.to_lowercase();
         if !new_order.iter().any(|o| o.to_lowercase() == id_lower) {
-            new_order.push(id_lower);
+            new_order.push(id.clone());
         }
     }
+    
     config.active_mods = new_order;
     write_mods_config(Path::new(&paths.mods_config_path), &config)?;
     clear_cache();
