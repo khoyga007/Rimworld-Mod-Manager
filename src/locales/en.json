@@ -30,6 +30,7 @@
     "load_order": "Load Order",
     "save_games": "Save Games",
     "logs": "Logs",
+    "guide": "User Guide",
     "downloads": "Downloads",
     "collections": "Collections",
     "settings": "Settings"
@@ -52,7 +53,11 @@
     "optimization_complete": "Optimization complete!",
     "no_local_mods": "No local mods active to optimize!",
     "save_success": "Load order saved successfully!",
-    "update_preset_confirm": "Do you want to update the active profile '{{name}}' with these changes?"
+    "update_preset_confirm": "Do you want to update the active profile '{{name}}' with these changes?",
+    "update_profile_title": "Update Profile",
+    "restore_confirm": "Hệ thống sẽ tải xuống khoảng 2.5GB dữ liệu gốc để đảm bảo tính ổn định. Bạn có muốn tiếp tục không?",
+    "auto_sort": "Auto Sort",
+    "auto_sort_confirm": "Apply community-verified rules to sort your load order? This will reorganize your active mods."
   },
   "mod_hub": {
     "title": "Mod Hub",
@@ -195,6 +200,34 @@
     "apply_success": "Applied preset \"{{name}}\"",
     "delete_confirm": "Delete preset \"{{name}}\"?",
     "delete_success": "Deleted \"{{name}}\"",
-    "update_success": "Updated \"{{name}}\" with {{count}} mods"
+    "update_success": "Updated \"{{name}}\" with {{count}} mods",
+    "update_confirm": "Update \"{{name}}\" with the currently active {{count}} mods?"
+  },
+  "guide": {
+    "hero_title": "Pro Handbook",
+    "hero_subtitle": "Become a RimWorld modding master. Detailed guide from basic setup to advanced optimization.",
+    "tip_save": "Auto-sync profiles",
+    "tip_drag": "Drag to sort",
+    "tip_rules": "Real-time RimPy rules",
+    "setup_title": "1. Initial Setup",
+    "setup_desc": "SOLID FOUNDATION",
+    "setup_content": "• Game Directory: The folder containing RimWorldWin64.exe. The app needs this to identify Core mods and DLCs.\n• AppData Directory: Where the game stores its mod configuration (ModsConfig.xml). This is the 'heart' of mod management; the app overwrites this to change your active mods.\n• Tip: If the app can't find the game, double-check your path permissions in Settings.",
+    "mods_title": "2. Mod List Management",
+    "mods_desc": "MASTER YOUR COLLECTION",
+    "mods_content": "• Quick Toggle: Click (+) in the 'Inactive' list to enable, or (x) in the 'Active' list to disable.\n• Smart Search: Find mods by name or author instantly.\n• Custom Tags: Right-click any mod to add tags (e.g., 'Graphics', 'Gameplay'). You can then filter your list by these tags.\n• Size Analysis: Use 'Analyze Sizes' to identify disk space hogs (especially high-res texture mods).",
+    "order_title": "3. Load Order",
+    "order_desc": "STABILITY FIRST (ANTI-CTD)",
+    "order_content": "• Golden Rule: Core library mods (Core, HugsLib, JecsTools) must always be at the top.\n• Auto-Sort: Powered by the RimPy community database. Click 'Auto-Sort' to automatically move mods to their safest positions.\n• Conflict Analysis: Red-highlighted mods are missing dependencies or have placement issues. Read the 'Requires' section for fixes.",
+    "opti_title": "4. Texture Optimization",
+    "opti_desc": "FPS & PERFORMANCE BOOST",
+    "opti_content": "• Why Optimize?: RimWorld mods often use PNGs, which your GPU must decompress. Converting to DDS (BC7) allows direct GPU reading, cutting load times from minutes to seconds.\n• Smart Resize: For GPUs with <6GB VRAM, use 1024px. For high-end cards, keep 2048px.\n• Note: This replaces original images in your mod folders. Restore via Steam's 'Verify Integrity' if needed.",
+    "presets_title": "5. Collections & Profiles",
+    "presets_desc": "VERSATILE PLAYSTYLES",
+    "presets_content": "• Save Presets: Once you have a stable list, save it as a 'Collection'. Perfect for switching between different playthrough styles (e.g., Medieval vs. Cyberpunk).\n• Automatic Sync: When a Profile is active, any changes you make in the Mods tab can be synced directly to that profile when you hit SAVE.",
+    "trouble_title": "6. Troubleshooting (Debug)",
+    "trouble_desc": "EMERGENCY RESCUE",
+    "trouble_content": "• Game Logs: If your game crashes, check the Logs tab. RED lines are your most important clues.\n• System Restore: This re-downloads essential core files if they become corrupted or accidentally deleted.\n• Clean Cache: Clearing the game's cache can often resolve strange texture glitches.",
+    "community_title": "Community & Resources",
+    "community_desc": "RimPro is built upon the contributions of the global RimWorld community. Check out these resources to further enhance your experience."
   }
 }

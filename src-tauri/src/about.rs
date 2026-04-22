@@ -43,7 +43,7 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
             Ok(Event::Text(e)) => {
                 let txt = e.unescape().unwrap_or_default().to_string();
                 if txt.trim().is_empty() { continue; }
-                
+
                 let mut clean_path = String::new();
                 for p in &path {
                     let tag = p.split(':').last().unwrap_or(p); // strip namespace
@@ -51,10 +51,8 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
                     clean_path.push_str(tag);
                 }
                 
-                let txt_lower = txt.to_lowercase();
-                
                 if clean_path.ends_with("packageId") && !clean_path.contains("modDependencies") {
-                    about.package_id = txt_lower;
+                    about.package_id = txt.clone();
                 } else if clean_path.ends_with("name") {
                     about.name = txt;
                 } else if clean_path.ends_with("author") {
@@ -66,21 +64,21 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
                 } else if clean_path.contains("modDependencies") && clean_path.contains("li") {
                     // Handling complex structured dependency
                     if clean_path.ends_with("packageId") {
-                        about.mod_dependencies.push(Dependency { package_id: txt_lower, display_name: None });
+                        about.mod_dependencies.push(Dependency { package_id: txt.clone(), display_name: None });
                     } else if clean_path.ends_with("displayName") {
                         if let Some(last) = about.mod_dependencies.last_mut() {
                             last.display_name = Some(txt);
                         }
                     } else if clean_path.ends_with("li") && !txt.contains('<') {
                          // Simple string dependency fallback
-                         about.mod_dependencies.push(Dependency { package_id: txt_lower, display_name: None });
+                         about.mod_dependencies.push(Dependency { package_id: txt.clone(), display_name: None });
                     }
                 } else if clean_path.contains("loadAfter") && clean_path.ends_with("li") {
-                    about.load_after.push(txt_lower);
+                    about.load_after.push(txt.clone());
                 } else if clean_path.contains("loadBefore") && clean_path.ends_with("li") {
-                    about.load_before.push(txt_lower);
+                    about.load_before.push(txt.clone());
                 } else if clean_path.contains("incompatibleWith") && clean_path.ends_with("li") {
-                    about.incompatible_with.push(txt_lower);
+                    about.incompatible_with.push(txt.clone());
                 } else if clean_path.ends_with("publishedFileId") {
                     about.published_file_id = Some(txt);
                 }

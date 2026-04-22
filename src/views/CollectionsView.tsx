@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { ModInfo, Preset } from "../types";
+import CustomDialog from "../components/CustomDialog";
 
 interface Props {
   mods: ModInfo[];
@@ -16,6 +17,20 @@ export default function CollectionsView({ mods, toast, onRefresh, selectedPreset
   const [presets, setPresets] = useState<Preset[]>([]);
   const [newName, setNewName] = useState("");
   const [newNote, setNewNote] = useState("");
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    type: "confirm" | "prompt";
+    title: string;
+    message: string;
+    defaultValue?: string;
+    onConfirm: (val?: string) => void;
+  }>({
+    isOpen: false,
+    type: "confirm",
+    title: "",
+    message: "",
+    onConfirm: () => {}
+  });
 
   const loadPresets = async () => {
     try {
@@ -59,28 +74,45 @@ export default function CollectionsView({ mods, toast, onRefresh, selectedPreset
   };
 
   const deletePreset = async (preset: Preset) => {
-    if (!confirm(t('collections.delete_confirm', { name: preset.name }))) return;
-    try {
-      await invoke("delete_preset", { id: preset.id });
-      if (selectedPresetId === preset.id) {
-        setSelectedPresetId("");
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      title: t('common.delete'),
+      message: t('collections.delete_confirm', { name: preset.name }),
+      onConfirm: async () => {
+        try {
+          await invoke("delete_preset", { id: preset.id });
+          if (selectedPresetId === preset.id) {
+            setSelectedPresetId("");
+          }
+          loadPresets();
+          toast(t('collections.delete_success', { name: preset.name }), "info");
+          setDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (e: any) {
+          toast(e?.toString() || t('common.error'), "error");
+        }
       }
-      loadPresets();
-      toast(t('collections.delete_success', { name: preset.name }), "info");
-    } catch (e: any) {
-      toast(e?.toString() || t('common.error'), "error");
-    }
+    });
   };
 
   const updatePreset = async (preset: Preset) => {
     const enabledIds = mods.filter((m) => m.enabled).map((m) => m.id);
-    try {
-      await invoke("update_preset", { id: preset.id, modIds: enabledIds });
-      loadPresets();
-      toast(t('collections.update_success', { name: preset.name, count: enabledIds.length }), "success");
-    } catch (e: any) {
-      toast(e?.toString() || t('common.error'), "error");
-    }
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      title: t('collections.update'),
+      message: t('collections.update_confirm', { name: preset.name, count: enabledIds.length }) || `Update "${preset.name}" with current ${enabledIds.length} mods?`,
+      onConfirm: async () => {
+        try {
+          await invoke("update_preset", { id: preset.id, modIds: enabledIds });
+          loadPresets();
+          toast(t('collections.update_success', { name: preset.name, count: enabledIds.length }), "success");
+          setDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (e: any) {
+          toast(e?.toString() || t('common.error'), "error");
+        }
+      }
+    });
   };
 
   const formatDate = (ms: number) => new Date(ms).toLocaleDateString("en-US", {
@@ -209,6 +241,16 @@ export default function CollectionsView({ mods, toast, onRefresh, selectedPreset
         )}
       </div>
       </div>
+
+      <CustomDialog
+        isOpen={dialog.isOpen}
+        type={dialog.type}
+        title={dialog.title}
+        message={dialog.message}
+        defaultValue={dialog.defaultValue}
+        onConfirm={dialog.onConfirm}
+        onCancel={() => setDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

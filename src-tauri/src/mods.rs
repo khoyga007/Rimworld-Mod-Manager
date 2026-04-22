@@ -187,7 +187,7 @@ pub fn write_mods_config(path: &Path, config: &ModsConfig) -> Result<()> {
     let mut active = config.active_mods.clone();
     // Ensure core is always present
     if !active.iter().any(|m| m.to_lowercase() == "ludeon.rimworld") {
-        active.insert(0, "ludeon.rimworld".to_string());
+        active.insert(0, "Ludeon.RimWorld".to_string());
     }
 
     let mut out = String::new();
@@ -685,18 +685,9 @@ pub fn set_enabled_set(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
 pub fn set_order(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
     let mut config = read_mods_config(Path::new(&paths.mods_config_path))?;
     
-    // Use original casing from ids if provided, fallback to config casing
-    let mut new_order: Vec<String> = ids.iter().cloned().collect();
+    // Trust the frontend's list entirely for the active order
+    config.active_mods = ids.iter().cloned().collect();
     
-    // Ensure all currently active mods are in the new_order, preserving their original casing
-    for id in &config.active_mods {
-        let id_lower = id.to_lowercase();
-        if !new_order.iter().any(|o| o.to_lowercase() == id_lower) {
-            new_order.push(id.clone());
-        }
-    }
-    
-    config.active_mods = new_order;
     write_mods_config(Path::new(&paths.mods_config_path), &config)?;
     clear_cache();
     Ok(())

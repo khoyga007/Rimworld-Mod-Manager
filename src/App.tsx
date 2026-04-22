@@ -10,10 +10,11 @@ import LoadOrderView from "./views/LoadOrderView";
 import DownloadView from "./views/DownloadView";
 import CollectionsView from "./views/CollectionsView";
 import SaveGameView from "./views/SaveGameView";
+import GuideView from "./views/GuideView";
 import { ModHubView } from "./views/ModHubView";
 import { useTranslation } from 'react-i18next';
 
-type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
+type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
 
 export default function App() {
   const { t } = useTranslation();
@@ -202,6 +203,7 @@ export default function App() {
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
             {view === "logs" && <LogsView />}
+            {view === "guide" && <GuideView />}
             {view === "settings" && <SettingsView paths={paths} onPathsChange={(p) => { setPaths(p); refreshMods(); }} toast={toast} />}
           </div>
         </div>

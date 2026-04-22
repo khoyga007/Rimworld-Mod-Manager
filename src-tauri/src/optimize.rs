@@ -386,7 +386,6 @@ fn revert_single_dds_to_png(texconv: &Path, dds_path: &Path) -> Result<()> {
         .args([
             "-ft", "png",       // Output format PNG
             "-y",              // Overwrite
-            "-vflip",          // Flip back to normal orientation
             "-o", &parent.to_string_lossy(),
         ])
         .arg(dds_path)

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-04-22
+
+### Added
+- **Community-Verified Auto-Sort**: Added a "Magic Wand" button to automatically sort active mods based on community-recommended load order rules.
+- **Mod Size Analysis**: Integrated a visual breakdown of mod sizes on disk, helping users identify VRAM-heavy textures.
+- **Glassmorphism UI Polish**: Implemented a professional, semi-transparent layout with custom `ResizeObserver` logic for perfectly fitted virtual lists.
+
+### Fixed
+- **Texture Flip Fix**: Added mandatory `-vflip` flag to `texconv` operations. This ensures textures (especially trees) are oriented correctly for Unity/RimWorld during optimization.
+- **Stability Improvements**: Resolved "black screen" rendering issues by replacing problematic external layout libraries with native browser APIs.
+- **Case-Sensitive Compatibility**: Fixed a bug where forcing mod IDs to lowercase prevented the game from recognizing some mods; original casing is now preserved in `ModsConfig.xml`.
+- **Command Sync**: Synchronized frontend invocations with Rust backend command registry to prevent `InvokeError`.
+
 ## [0.5.0] - 2026-04-22
 
 ### Added

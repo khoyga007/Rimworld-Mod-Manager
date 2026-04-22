@@ -1,13 +1,14 @@
 // v1.0.2 - Unified Search & RimPy Action Bar
-import { memo, useState, useEffect, useCallback, useMemo } from "react";
+import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided } from "@hello-pangea/dnd";
 import { FixedSizeList as List } from "react-window";
 
-import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play } from "lucide-react";
+import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ModInfo, Preset } from "../types";
+import CustomDialog from "../components/CustomDialog";
 
 // Global image cache
 const _imgCache: Record<string, string> = {};
@@ -237,6 +238,26 @@ function VirtualRow({ index, style, data }: any) {
   );
 }
 
+const useAutoSizer = (ref: React.RefObject<HTMLDivElement | null>) => {
+  const [size, setSize] = useState({ height: 0, width: 0 });
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setSize({
+          height: entry.contentRect.height,
+          width: entry.contentRect.width,
+        });
+      }
+    });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return size;
+};
+
 export default function ModsView({ 
   mods, 
   onRefresh, 
@@ -263,8 +284,27 @@ export default function ModsView({
   const [resizeRes, setResizeRes] = useState<512 | 1024 | 2048>(1024);
   const [compressionFormat, setCompressionFormat] = useState<"smart" | "bc7" | "bc1">("smart");
   const [modSizes, setModSizes] = useState<Record<string, { total: number, assets: number }>>({});
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    type: "confirm" | "prompt";
+    title: string;
+    message: string;
+    defaultValue?: string;
+    onConfirm: (val?: string) => void;
+  }>({
+    isOpen: false,
+    type: "confirm",
+    title: "",
+    message: "",
+    onConfirm: () => {}
+  });
   const [analyzing, setAnalyzing] = useState(false);
   const [presets, setPresets] = useState<Preset[]>([]);
+
+  const inactiveRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  const inactiveSize = useAutoSizer(inactiveRef);
+  const activeSize = useAutoSizer(activeRef);
 
   const bumpImgVer = useCallback(() => setImgVer((v) => v + 1), []);
 
@@ -367,10 +407,21 @@ export default function ModsView({
       // If a preset is selected, ask to update it too
       if (selectedPresetId) {
         const activePreset = presets.find(p => p.id === selectedPresetId);
-        if (activePreset && confirm(t('mods.update_preset_confirm', { name: activePreset.name }))) {
-          await invoke("update_preset", { id: selectedPresetId, modIds: ids });
-          toast(t('collections.update_success', { name: activePreset.name, count: ids.length }), "success");
-          loadPresets();
+        if (activePreset) {
+          setDialog({
+            isOpen: true,
+            type: "confirm",
+            title: t('mods.update_profile_title') || "Update Profile",
+            message: t('mods.update_preset_confirm', { name: activePreset.name }),
+            onConfirm: async () => {
+              try {
+                await invoke("update_preset", { id: selectedPresetId, modIds: ids });
+                toast(t('collections.update_success', { name: activePreset.name, count: ids.length }), "success");
+                loadPresets();
+                setDialog(prev => ({ ...prev, isOpen: false }));
+              } catch (err: any) { toast(err.toString(), "error"); }
+            }
+          });
         }
       }
 
@@ -380,6 +431,25 @@ export default function ModsView({
     } catch (e: any) {
       toast(e.toString(), "error");
     }
+  };
+
+  const autoSort = async () => {
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      title: t('mods.auto_sort'),
+      message: t('mods.auto_sort_confirm') || "Apply community-verified rules to sort your load order?",
+      onConfirm: async () => {
+        setDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          await invoke("apply_auto_sort", { activeIds: localActive.map(m => m.id) });
+          toast("Auto-sort complete!", "success");
+          onRefresh();
+        } catch (e: any) {
+          toast(e.toString(), "error");
+        }
+      }
+    });
   };
 
   const optimizeAll = async () => {
@@ -406,7 +476,7 @@ export default function ModsView({
   const analyzeAllSizes = async () => {
     setAnalyzing(true);
     try {
-      const results = await invoke<Record<string, { total: number, assets: number }>>("analyze_all_mod_sizes");
+      const results = await invoke<Record<string, { total: number, assets: number }>>("analyze_mod_sizes");
       setModSizes(results);
       toast("Size analysis complete!", "info");
     } catch (e: any) {
@@ -417,16 +487,24 @@ export default function ModsView({
   };
 
   const restoreSystem = async () => {
-    if (!confirm("This will download 2.5GB of core assets to ensure game stability. Continue?")) return;
-    setBatchStatus({ active: true, currentModName: "Initializing...", progress: 0, title: "System Restore" });
-    try {
-      await invoke("restore_all_local_mods");
-      toast("Restore complete!", "success");
-    } catch (e: any) {
-      toast(e.toString(), "error");
-    } finally {
-      setBatchStatus(null);
-    }
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      title: t('mods.system_restore'),
+      message: t('mods.restore_confirm') || "This will download 2.5GB of core assets to ensure game stability. Continue?",
+      onConfirm: async () => {
+        setDialog(prev => ({ ...prev, isOpen: false }));
+        setBatchStatus({ active: true, currentModName: "Initializing...", progress: 0, title: "System Restore" });
+        try {
+          await invoke("restore_all_local_mods");
+          toast("Restore complete!", "success");
+        } catch (e: any) {
+          toast(e.toString(), "error");
+        } finally {
+          setBatchStatus(null);
+        }
+      }
+    });
   };
 
   const formatSize = (bytes: number) => {
@@ -530,14 +608,22 @@ export default function ModsView({
             </select>
             
             <button 
-              onClick={async () => {
-                const name = prompt(t('mods.new_profile_prompt'));
-                if (!name) return;
-                try {
-                  await invoke("create_preset", { name, modIds: localActive.map(m => m.id) });
-                  toast("Profile created!", "success");
-                  loadPresets();
-                } catch (err: any) { toast(err.toString(), "error"); }
+              onClick={() => {
+                setDialog({
+                  isOpen: true,
+                  type: "prompt",
+                  title: t('mods.new_profile'),
+                  message: t('mods.new_profile_prompt'),
+                  onConfirm: async (name) => {
+                    if (!name) return;
+                    try {
+                      await invoke("create_preset", { name, modIds: localActive.map(m => m.id) });
+                      toast("Profile created!", "success");
+                      loadPresets();
+                      setDialog(prev => ({ ...prev, isOpen: false }));
+                    } catch (err: any) { toast(err.toString(), "error"); }
+                  }
+                });
               }}
               className="p-1 hover:bg-white/10 rounded text-muted-foreground"
               title="Create New Profile"
@@ -547,15 +633,23 @@ export default function ModsView({
 
             {selectedPresetId && (
               <button 
-                onClick={async () => {
-                  if (confirm(t('mods.delete_profile_confirm'))) {
-                    try {
-                      await invoke("delete_preset", { id: selectedPresetId });
-                      setSelectedPresetId("");
-                      toast("Profile deleted", "info");
-                      loadPresets();
-                    } catch (err: any) { toast(err.toString(), "error"); }
-                  }
+                onClick={() => {
+                  const activePreset = presets.find(p => p.id === selectedPresetId);
+                  setDialog({
+                    isOpen: true,
+                    type: "confirm",
+                    title: t('common.delete'),
+                    message: t('mods.delete_profile_confirm', { name: activePreset?.name }),
+                    onConfirm: async () => {
+                      try {
+                        await invoke("delete_preset", { id: selectedPresetId });
+                        setSelectedPresetId("");
+                        toast("Profile deleted", "info");
+                        loadPresets();
+                        setDialog(prev => ({ ...prev, isOpen: false }));
+                      } catch (err: any) { toast(err.toString(), "error"); }
+                    }
+                  });
                 }}
                 className="p-1 hover:bg-red-500/20 text-red-400 rounded"
                 title="Delete Profile"
@@ -568,6 +662,15 @@ export default function ModsView({
           <div className="h-6 w-px bg-white/10 mx-2" />
 
           <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/5">
+            <button 
+              onClick={autoSort}
+              className="p-1.5 hover:bg-white/10 rounded-md text-accent transition-colors flex items-center gap-2 group"
+              title={t('mods.auto_sort')}
+            >
+              <Wand2 size={16} className="group-hover:rotate-12 transition-transform" />
+              <span className="text-[10px] font-black uppercase tracking-tighter pr-1">{t('mods.auto_sort')}</span>
+            </button>
+            <div className="w-px h-4 bg-white/10 mx-1" />
             <button 
               onClick={analyzeAllSizes}
               disabled={analyzing}
@@ -726,51 +829,53 @@ export default function ModsView({
               </h2>
               <button onClick={enableAll} className="text-[9px] font-bold text-muted-foreground hover:text-white">{t('mods.enable_all')}</button>
             </div>
-            <div className="flex-1 relative">
-              <Droppable 
-                droppableId="inactive" 
-                mode="virtual"
-                renderClone={(provided, snapshot, rubric) => (
-                  <ModCard
-                    mod={filteredInactive[rubric.source.index]}
-                    index={rubric.source.index}
-                    provided={provided}
-                    isDragging={snapshot.isDragging}
-                    formatSize={formatSize}
-                    onRefresh={onRefresh}
-                    toast={toast}
-                    onToggle={() => {}} // No toggle during drag
-                  />
-                )}
-              >
-                {(provided) => (
-                  <div className="h-full w-full">
-                    <List
-                      height={window.innerHeight - 240}
-                      itemCount={filteredInactive.length}
-                      itemSize={110} // Height + Gap
-                      width="100%"
-                      outerRef={provided.innerRef}
-                      itemData={{
-                        list: filteredInactive,
-                        modSizes,
-                        formatSize,
-                        onRefresh,
-                        toast,
-                        onToggle: (mod: ModInfo) => {
-                          setLocalInactive(prev => prev.filter(m => m.id !== mod.id));
-                          setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
-                          setDirty(true);
-                          invoke("set_mod_enabled", { id: mod.id, enabled: true }).catch(() => onRefresh());
-                        }
-                      }}
-                      className="custom-scrollbar"
-                    >
-                      {VirtualRow}
-                    </List>
-                  </div>
-                )}
-              </Droppable>
+            <div className="flex-1 relative" ref={inactiveRef}>
+              {inactiveSize.height > 0 && (
+                <Droppable 
+                  droppableId="inactive" 
+                  mode="virtual"
+                  renderClone={(provided, snapshot, rubric) => (
+                    <ModCard
+                      mod={filteredInactive[rubric.source.index]}
+                      index={rubric.source.index}
+                      provided={provided}
+                      isDragging={snapshot.isDragging}
+                      formatSize={formatSize}
+                      onRefresh={onRefresh}
+                      toast={toast}
+                      onToggle={() => {}} // No toggle during drag
+                    />
+                  )}
+                >
+                  {(provided) => (
+                    <div className="h-full w-full">
+                      <List
+                        height={inactiveSize.height}
+                        itemCount={filteredInactive.length}
+                        itemSize={110} // Height + Gap
+                        width={inactiveSize.width}
+                        outerRef={provided.innerRef}
+                        itemData={{
+                          list: filteredInactive,
+                          modSizes,
+                          formatSize,
+                          onRefresh,
+                          toast,
+                          onToggle: (mod: ModInfo) => {
+                            setLocalInactive(prev => prev.filter(m => m.id !== mod.id));
+                            setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
+                            setDirty(true);
+                            invoke("set_mod_enabled", { id: mod.id, enabled: true }).catch(() => onRefresh());
+                          }
+                        }}
+                        className="custom-scrollbar"
+                      >
+                        {VirtualRow}
+                      </List>
+                    </div>
+                  )}
+                </Droppable>
+              )}
             </div>
           </div>
 
@@ -787,61 +892,74 @@ export default function ModsView({
               </h2>
               <button onClick={disableAll} className="text-[9px] font-bold text-muted-foreground hover:text-red-400">{t('mods.disable_all')}</button>
             </div>
-            <div className="flex-1 relative">
-              <Droppable 
-                droppableId="active" 
-                mode="virtual"
-                renderClone={(provided, snapshot, rubric) => (
-                  <ModCard
-                    mod={filteredActive[rubric.source.index]}
-                    index={rubric.source.index}
-                    provided={provided}
-                    isDragging={snapshot.isDragging}
-                    isActive
-                    formatSize={formatSize}
-                    onRefresh={onRefresh}
-                    toast={toast}
-                    onToggle={() => {}}
-                  />
-                )}
-              >
-                {(provided) => (
-                  <div className="h-full w-full">
-                    <List
-                      height={window.innerHeight - 240}
-                      itemCount={filteredActive.length}
-                      itemSize={110}
-                      width="100%"
-                      outerRef={provided.innerRef}
-                      itemData={{
-                        list: filteredActive,
-                        modSizes,
-                        formatSize,
-                        onRefresh,
-                        toast,
-                        isActive: true,
-                        onToggle: (mod: ModInfo) => {
-                          if (mod.source === "official" || mod.author === "Ludeon Studios") {
-                            toast("Cannot disable official game content!", "warning");
-                            return;
+            <div className="flex-1 relative" ref={activeRef}>
+              {activeSize.height > 0 && (
+                <Droppable 
+                  droppableId="active" 
+                  mode="virtual"
+                  renderClone={(provided, snapshot, rubric) => (
+                    <ModCard
+                      mod={filteredActive[rubric.source.index]}
+                      index={rubric.source.index}
+                      provided={provided}
+                      isDragging={snapshot.isDragging}
+                      isActive
+                      formatSize={formatSize}
+                      onRefresh={onRefresh}
+                      toast={toast}
+                      onToggle={() => {}}
+                    />
+                  )}
+                >
+                  {(provided) => (
+                    <div className="h-full w-full">
+                      <List
+                        height={activeSize.height}
+                        itemCount={filteredActive.length}
+                        itemSize={110}
+                        width={activeSize.width}
+                        outerRef={provided.innerRef}
+                        itemData={{
+                          list: filteredActive,
+                          modSizes,
+                          formatSize,
+                          onRefresh,
+                          toast,
+                          isActive: true,
+                          onToggle: (mod: ModInfo) => {
+                            if (mod.source === "official" || mod.author === "Ludeon Studios") {
+                              toast("Cannot disable official game content!", "warning");
+                              return;
+                            }
+                            setLocalActive(prev => prev.filter(m => m.id !== mod.id));
+                            setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
+                            setDirty(true);
+                            invoke("set_mod_enabled", { id: mod.id, enabled: false }).catch(() => onRefresh());
                           }
-                          setLocalActive(prev => prev.filter(m => m.id !== mod.id));
-                          setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
-                          setDirty(true);
-                          invoke("set_mod_enabled", { id: mod.id, enabled: false }).catch(() => onRefresh());
-                        }
-                      }}
-                      className="custom-scrollbar"
-                    >
-                      {VirtualRow}
-                    </List>
-                  </div>
-                )}
-              </Droppable>
+                        }}
+                        className="custom-scrollbar"
+                      >
+                        {VirtualRow}
+                      </List>
+                    </div>
+                  )}
+                </Droppable>
+              )}
             </div>
           </div>
         </div>
       </DragDropContext>
-  </div>
+
+      {/* Global Custom Dialog */}
+      <CustomDialog
+        isOpen={dialog.isOpen}
+        type={dialog.type}
+        title={dialog.title}
+        message={dialog.message}
+        defaultValue={dialog.defaultValue}
+        onConfirm={dialog.onConfirm}
+        onCancel={() => setDialog(prev => ({ ...prev, isOpen: false }))}
+      />
+    </div>
   );
 }

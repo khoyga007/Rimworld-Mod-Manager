@@ -30,6 +30,7 @@
     "load_order": "Thứ tự load",
     "save_games": "File Save",
     "logs": "Nhật ký (Log)",
+    "guide": "Hướng dẫn",
     "downloads": "Tải về",
     "collections": "Bộ sưu tập",
     "settings": "Cài đặt"
@@ -52,7 +53,11 @@
     "optimization_complete": "Tối ưu hóa hoàn tất!",
     "no_local_mods": "Không có mod nội bộ nào đang bật để tối ưu!",
     "save_success": "Đã lưu thứ tự nạp mod thành công!",
-    "update_preset_confirm": "Bạn có muốn cập nhật những thay đổi này vào Profile '{{name}}' đang chọn không?"
+    "update_preset_confirm": "Bạn có muốn cập nhật những thay đổi này vào Profile '{{name}}' đang chọn không?",
+    "update_profile_title": "Cập nhật Profile",
+    "restore_confirm": "Hệ thống sẽ tải xuống khoảng 2.5GB dữ liệu gốc để đảm bảo tính ổn định. Bạn có muốn tiếp tục không?",
+    "auto_sort": "Sắp xếp tự động",
+    "auto_sort_confirm": "Áp dụng các quy tắc nạp mod đã được cộng đồng xác minh? Hành động này sẽ sắp xếp lại toàn bộ danh sách mod đang bật của bạn."
   },
   "mod_hub": {
     "title": "Trung tâm Mod",
@@ -195,6 +200,34 @@
     "apply_success": "Đã áp dụng bộ sưu tập \"{{name}}\"",
     "delete_confirm": "Xóa bộ sưu tập \"{{name}}\"?",
     "delete_success": "Đã xóa \"{{name}}\"",
-    "update_success": "Đã cập nhật \"{{name}}\" với {{count}} mod"
+    "update_success": "Đã cập nhật \"{{name}}\" với {{count}} mod",
+    "update_confirm": "Bạn có muốn cập nhật \"{{name}}\" bằng {{count}} mod đang bật hiện tại không?"
+  },
+  "guide": {
+    "hero_title": "Cẩm Nang Pro",
+    "hero_subtitle": "Trở thành bậc thầy quản lý mod RimWorld. Hướng dẫn chi tiết từ thiết lập cơ bản đến tối ưu hóa chuyên sâu.",
+    "tip_save": "Đồng bộ Profile tự động",
+    "tip_drag": "Kéo thả để sắp xếp",
+    "tip_rules": "Cập nhật luật RimPy liên tục",
+    "setup_title": "1. Thiết lập ban đầu",
+    "setup_desc": "NỀN MÓNG VỮNG CHẮC",
+    "setup_content": "• Thư mục Game: Là nơi chứa file RimWorldWin64.exe. App cần đường dẫn này để nhận diện các bản Mod gốc (Core) và mở rộng (DLC).\n• Thư mục AppData: Nơi game lưu cấu hình nạp mod (ModsConfig.xml). Đây là 'trái tim' của việc quản lý mod, app sẽ ghi đè vào đây để thay đổi danh sách mod của bạn.\n• Mẹo: Nếu app báo lỗi không tìm thấy game, hãy kiểm tra lại quyền truy cập thư mục trong Cài đặt.",
+    "mods_title": "2. Quản lý danh sách Mod",
+    "mods_desc": "LÀM CHỦ KHO MOD",
+    "mods_content": "• Bật/Tắt nhanh: Click vào dấu (+) ở danh sách 'Chưa dùng' để bật, hoặc dấu (x) ở danh sách 'Đang dùng' để tắt.\n• Tìm kiếm thông minh: Bạn có thể tìm theo tên Mod hoặc tên Tác giả.\n• Thẻ tùy chỉnh (Tags): Chuột phải vào Mod để thêm Tag (vd: 'Đồ họa', 'Gameplay'). Sau đó bạn có thể lọc nhanh các mod theo tag này.\n• Quét dung lượng: Sử dụng nút 'Quét dung lượng' để biết mod nào đang chiếm nhiều ổ cứng nhất (đặc biệt là các mod texture nặng).",
+    "order_title": "3. Thứ tự nạp (Load Order)",
+    "order_desc": "CHỐNG VĂNG GAME (CTD)",
+    "order_content": "• Quy tắc vàng: Các mod nền (Core, HugsLib, JecsTools) phải luôn nằm ở trên cùng.\n• Sắp xếp tự động: Hệ thống sử dụng cơ sở dữ liệu luật từ cộng đồng (RimPy). Hãy ấn 'Sắp xếp tự động' để app tự đưa các mod về vị trí an toàn nhất.\n• Phân tích lỗi: Nếu có mod hiện màu đỏ, nghĩa là nó đang thiếu Mod nền hoặc bị xung đột vị trí. Hãy đọc kỹ phần 'Yêu cầu' để bổ sung.",
+    "opti_title": "4. Tối ưu hóa Texture",
+    "opti_desc": "TĂNG FPS & GIẢM GIẬT LAG",
+    "opti_content": "• Tại sao cần tối ưu?: Mod RimWorld thường dùng định dạng PNG, khiến GPU mất thời gian giải nén. Chuyển sang DDS (BC7) giúp GPU đọc trực tiếp, giảm load time từ vài phút xuống vài giây.\n• Smart Resize: Nếu bạn có card đồ họa dưới 6GB VRAM, hãy chọn 1024px. Nếu dùng card mạnh, hãy giữ 2048px.\n• Lưu ý: Quá trình này sẽ thay thế file ảnh gốc trong thư mục Mod bằng file đã tối ưu. Bạn có thể khôi phục bằng cách 'Verify Integrity' trên Steam.",
+    "presets_title": "5. Bộ sưu tập & Profile",
+    "presets_desc": "CHUYỂN ĐỔI LINH HOẠT",
+    "presets_content": "• Lưu cấu hình: Khi bạn có một danh sách mod ổn định, hãy lưu thành 'Bộ sưu tập' (Preset). Điều này cực kỳ hữu ích khi bạn muốn chơi nhiều kiểu khác nhau (vd: Một list chơi thời Trung cổ, một list chơi Cyberpunk).\n• Tự động cập nhật: Khi đang chọn một Profile, mọi thay đổi của bạn ở tab Mod sẽ được hỏi để cập nhật trực tiếp vào Profile đó khi bạn ấn LƯU.",
+    "trouble_title": "6. Xử lý sự cố (Debug)",
+    "trouble_desc": "CỨU HỘ KHẨN CẤP",
+    "trouble_content": "• Nhật ký (Logs): Nếu game bị crash hoặc mod không chạy, hãy xem tab Nhật ký. Các dòng chữ ĐỎ là manh mối quan trọng nhất.\n• Hồi phục hệ thống: Tính năng này sẽ tải lại các file core cần thiết nếu bạn lỡ tay xóa nhầm hoặc làm hỏng file game gốc.\n• Clean Cache: Đôi khi việc xóa cache của game sẽ giải quyết được các lỗi hiển thị texture kỳ lạ.",
+    "community_title": "Cộng đồng & Tài nguyên",
+    "community_desc": "RimPro được xây dựng dựa trên sự đóng góp của cộng đồng RimWorld toàn cầu. Hãy tham khảo thêm các nguồn bên dưới để nâng tầm trải nghiệm."
   }
 }
