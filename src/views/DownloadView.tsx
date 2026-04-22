@@ -152,7 +152,7 @@ export default function DownloadView({ downloads, toast }: Props) {
             {downloadEntries.map(([id, dl]) => {
               const isError = dl.status === "error";
               const isDone = dl.status === "done";
-              const isActive = dl.status === "downloading" || dl.status === "installing";
+              const isActive = dl.status === "downloading" || dl.status === "installing" || dl.status === "restoring";
               
               return (
                 <div

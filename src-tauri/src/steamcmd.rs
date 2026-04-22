@@ -358,19 +358,26 @@ where
         return Err(anyhow!("No local mods with Workshop IDs found to restore."));
     }
 
+    let total_count = to_restore.len();
     let ids: Vec<String> = to_restore.iter().filter_map(|m| m.remote_file_id.clone()).collect();
-    on_progress(10, &format!("Batch downloading {} mods from Steam...", ids.len()));
+    
+    on_progress(10, &format!("Batch downloading {} mods from Steam...", total_count));
 
     let app_h = app.clone();
+    let downloaded_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let dl_count_ref = downloaded_count.clone();
+
     let results = download_workshop_items_batch(&ids, move |ev| {
         match ev {
             BatchEvent::ItemDone(id) => {
+                let current = dl_count_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let pct = 10 + ((current as f32 / total_count as f32) * 60.0) as u8; // Range 10-70%
                 let _ = app_h.emit("download-progress", crate::DownloadProgress {
-                    workshop_id: id.clone(),
-                    status: "downloading".to_string(),
-                    progress: 80,
-                    message: format!("Downloaded #{}", id),
-                    title: None,
+                    workshop_id: "system_restore".to_string(),
+                    status: "restoring".to_string(),
+                    progress: pct,
+                    message: format!("Downloaded {}/{} mods (Item #{} done)", current, total_count, id),
+                    title: Some("System Restore".into()),
                     preview_url: None,
                 });
             }
@@ -378,13 +385,18 @@ where
         }
     }).await?;
 
-    on_progress(70, "Applying fresh copies to Local folders...");
+    on_progress(75, "Applying fresh copies to Local folders...");
     
     let mut restored = 0;
     let mut failed = 0;
 
-    for m in to_restore {
+    for (idx, m) in to_restore.into_iter().enumerate() {
+        let current_idx = idx + 1;
+        let pct = 75 + ((current_idx as f32 / total_count as f32) * 20.0) as u8; // Range 75-95%
+        
         if let Some(remote_id) = &m.remote_file_id {
+            on_progress(pct, &format!("Restoring: {} ({}/{})", m.name, current_idx, total_count));
+            
             if let Some(Ok(fresh_dir)) = results.get(remote_id) {
                 let target_path = std::path::Path::new(&m.path);
                 
