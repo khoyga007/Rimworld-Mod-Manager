@@ -30,6 +30,7 @@ const ULTRA_OVERSCAN = 2;
 const ULTRA_DRAG_DISABLE_THRESHOLD = 800;
 const ULTRA_HARD_OVERSCAN = 1;
 const ULTRA_HARD_SEARCH_DEBOUNCE_MS = 450;
+const MOD_ROW_PADDING = 8;
 
 type VisibleRange = {
   start: number;
@@ -64,12 +65,12 @@ function getVisibleMods(list: ModInfo[], range: VisibleRange, prefetchRows: numb
   return list.slice(start, stop + 1);
 }
 
-function buildSearchIndex(list: ModInfo[], includeAuthorAndTags: boolean): SearchableMod[] {
+function buildSearchIndex(list: ModInfo[], includeAuthor: boolean, includeTags: boolean): SearchableMod[] {
   return list.map((mod) => ({
     mod,
     name: mod.name.toLowerCase(),
-    author: includeAuthorAndTags ? (mod.author || "").toLowerCase() : "",
-    tags: includeAuthorAndTags ? getDisplayTags(mod).map((tag) => tag.toLowerCase()) : [],
+    author: includeAuthor ? (mod.author || "").toLowerCase() : "",
+    tags: includeTags ? getDisplayTags(mod).map((tag) => tag.toLowerCase()) : [],
   }));
 }
 
@@ -102,6 +103,7 @@ const ModCard = memo(({
   ultraPerformance,
   provided,
   isDragging,
+  dragWidth,
   formatSize, 
   onRefresh, 
   toast,
@@ -114,6 +116,7 @@ const ModCard = memo(({
   ultraPerformance: boolean,
   provided?: DraggableProvided,
   isDragging?: boolean,
+  dragWidth?: number,
   formatSize: any, 
   onRefresh: any, 
   toast: (msg: string, type?: string) => void,
@@ -161,13 +164,18 @@ const ModCard = memo(({
         ref={provided?.innerRef}
         {...provided?.draggableProps}
         {...provided?.dragHandleProps}
-        className={`glass-card px-3 py-2 flex items-center gap-3 ${
+        className={`glass-card px-3 py-2 flex items-center gap-3 cursor-grab active:cursor-grabbing ${
           isDragging ? 'border-accent/50 ring-1 ring-accent/20 z-50' : ''
         }`}
         style={{
           ...provided?.draggableProps.style,
           willChange: "transform, opacity",
-          minHeight: '64px'
+          minHeight: '64px',
+          width: dragWidth ? `${dragWidth}px` : "100%",
+          minWidth: dragWidth ? `${dragWidth}px` : undefined,
+          maxWidth: dragWidth ? `${dragWidth}px` : undefined,
+          flex: dragWidth ? "0 0 auto" : undefined,
+          boxSizing: "border-box",
         }}
       >
         {isActive && (
@@ -176,9 +184,8 @@ const ModCard = memo(({
           </div>
         )}
 
-        <button
-          type="button"
-          className="flex-1 min-w-0 text-left"
+        <div
+          className="flex-1 min-w-0"
           onClick={() => onToggle(mod)}
         >
           <div className="flex items-center gap-2">
@@ -207,7 +214,60 @@ const ModCard = memo(({
             )}
             <span className="font-mono ml-auto shrink-0">{formatSize(mod.size_bytes)}</span>
           </div>
-        </button>
+
+          <div className="flex items-center gap-1 mt-1 min-w-0 overflow-hidden">
+            {getDisplayTags(mod).slice(0, 3).map((t) => (
+              <span
+                key={t}
+                className={`inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded shrink-0 ${
+                  t === NEW_TAG
+                    ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+                    : 'bg-accent/10 text-accent border border-accent/20'
+                }`}
+              >
+                {t}
+                {t !== NEW_TAG && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void removeTag(t);
+                    }}
+                    className="hover:text-red-400"
+                    title="Remove Tag"
+                  >
+                    <X size={8} />
+                  </button>
+                )}
+              </span>
+            ))}
+
+            {addingTag ? (
+              <input
+                autoFocus
+                className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[8px] w-20 text-white"
+                value={newTag}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setNewTag(e.target.value)}
+                onBlur={handleAddTag}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') handleAddTag();
+                }}
+              />
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddingTag(true);
+                }}
+                className="inline-flex items-center justify-center text-[8px] text-muted-foreground hover:text-accent bg-white/5 px-1.5 py-0.5 rounded shrink-0"
+                title="Add Tag"
+              >
+                <Plus size={9} />
+              </button>
+            )}
+          </div>
+        </div>
 
         <button
           onClick={() => invoke("open_path_or_url", { target: mod.path })}
@@ -225,15 +285,20 @@ const ModCard = memo(({
       ref={provided?.innerRef}
       {...provided?.draggableProps}
       {...provided?.dragHandleProps}
-      className={`glass-card p-3 flex flex-col gap-2 group ${
+      className={`glass-card p-3 flex flex-col gap-2 group cursor-grab active:cursor-grabbing ${
         ultraPerformance
           ? (isDragging ? 'border-accent/50 ring-1 ring-accent/20 z-50' : '')
-          : `transition-all duration-200 ${isDragging ? 'shadow-2xl border-accent/50 scale-[1.02] ring-2 ring-accent/30 z-50' : 'hover:border-white/20'}`
+          : `transition-all duration-200 ${isDragging ? 'shadow-2xl border-accent/50 ring-2 ring-accent/30 z-50 bg-[rgba(22,25,30,0.96)]' : 'hover:border-white/20'}`
       }`}
       style={{ 
         ...provided?.draggableProps.style,
         willChange: "transform, opacity",
-        minHeight: '102px'
+        minHeight: '102px',
+        width: dragWidth ? `${dragWidth}px` : "100%",
+        minWidth: dragWidth ? `${dragWidth}px` : undefined,
+        maxWidth: dragWidth ? `${dragWidth}px` : undefined,
+        flex: dragWidth ? "0 0 auto" : undefined,
+        boxSizing: "border-box",
       }}
     >
       <div className="flex items-center gap-3">
@@ -356,7 +421,7 @@ function VirtualRow({ index, style, data }: any) {
   if (!mod) return null;
 
   return (
-    <div style={{ ...style, padding: '0 8px 8px 8px' }}>
+    <div style={{ ...style, padding: `0 ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px` }}>
       <Draggable draggableId={mod.id} index={index} isDragDisabled={data.dragDisabled}>
         {(provided, snapshot) => (
           <ModCard
@@ -383,7 +448,7 @@ function PlainVirtualRow({ index, style, data }: any) {
   if (!mod) return null;
 
   return (
-    <div style={{ ...style, padding: '0 8px 8px 8px' }}>
+    <div style={{ ...style, padding: `0 ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px` }}>
       <ModCard
         mod={mod}
         index={index}
@@ -447,7 +512,7 @@ export default function ModsView({
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
   const [dirty, setDirty] = useState(false);
-  const [, setImgVer] = useState(0);
+  const [imgVer, setImgVer] = useState(0);
   const [batchStatus, setBatchStatus] = useState<{
     active: boolean; currentModName: string; progress: number; title: string;
   } | null>(null);
@@ -732,48 +797,82 @@ export default function ModsView({
 
   const includeDetailedSearch = !ultraPerformance;
   const inactiveSearchIndex = useMemo(
-    () => buildSearchIndex(localInactive, includeDetailedSearch),
+    () => buildSearchIndex(localInactive, includeDetailedSearch, true),
     [localInactive, includeDetailedSearch]
   );
   const activeSearchIndex = useMemo(
-    () => buildSearchIndex(localActive, includeDetailedSearch),
+    () => buildSearchIndex(localActive, includeDetailedSearch, true),
     [localActive, includeDetailedSearch]
   );
 
   const filteredInactive = useMemo(() => {
     const search = deferredSearchText.toLowerCase();
-    const activeTag = ultraPerformance ? null : selectedTag;
+    const activeTag = selectedTag;
     return inactiveSearchIndex.filter(({ name, author, tags }) => {
       const matchesSearch = !search || name.includes(search) || author.includes(search);
       const matchesTag = !activeTag || tags.includes(activeTag.toLowerCase());
       return matchesSearch && matchesTag;
     }).map(({ mod }) => mod);
-  }, [inactiveSearchIndex, deferredSearchText, selectedTag, ultraPerformance]);
+  }, [inactiveSearchIndex, deferredSearchText, selectedTag]);
 
   const filteredActive = useMemo(() => {
     const search = deferredSearchText.toLowerCase();
-    const activeTag = ultraPerformance ? null : selectedTag;
+    const activeTag = selectedTag;
     return activeSearchIndex.filter(({ name, author, tags }) => {
       const matchesSearch = !search || name.includes(search) || author.includes(search);
       const matchesTag = !activeTag || tags.includes(activeTag.toLowerCase());
       return matchesSearch && matchesTag;
     }).map(({ mod }) => mod);
-  }, [activeSearchIndex, deferredSearchText, selectedTag, ultraPerformance]);
+  }, [activeSearchIndex, deferredSearchText, selectedTag]);
 
   const allTags = useMemo(() => {
-    if (ultraPerformance) return [];
     const tags = new Set<string>();
     mods.forEach(m => getDisplayTags(m).forEach(t => tags.add(t)));
     return Array.from(tags);
-  }, [mods, ultraPerformance]);
+  }, [mods]);
   const imagePrefetchRows = ultraPerformance ? 0 : performanceMode ? 2 : IMAGE_PREFETCH_ROWS;
   const shouldLoadImages = !disableThumbnails && !ultraPerformance && (!performanceMode || mods.length <= LARGE_MOD_LIST_THRESHOLD);
   const showThumbnail = !disableThumbnails;
   const itemSize = ultraPerformance ? ULTRA_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
   const dragDisabled = ultraHardMode;
   const overscanCount = ultraHardMode ? ULTRA_HARD_OVERSCAN : ultraPerformance ? ULTRA_OVERSCAN : NORMAL_OVERSCAN;
+  const renderDragClone = useCallback((list: ModInfo[], isActiveClone: boolean, containerWidth: number) => (
+    provided: DraggableProvided,
+    snapshot: any,
+    rubric: any
+  ) => {
+    const mod = list[rubric.source.index];
+    if (!mod) return null;
+    const cloneWidth = Math.max(containerWidth - MOD_ROW_PADDING * 2, 240);
+
+    return (
+      <div
+        style={{
+          padding: `0 ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px ${MOD_ROW_PADDING}px`,
+          width: cloneWidth,
+          boxSizing: "border-box",
+        }}
+      >
+        <ModCard
+          mod={mod}
+          index={rubric.source.index}
+          showThumbnail={showThumbnail}
+          ultraPerformance={ultraPerformance}
+          provided={provided}
+          isDragging={snapshot.isDragging}
+          dragWidth={cloneWidth}
+          isActive={isActiveClone}
+          formatSize={formatSize}
+          onRefresh={onRefresh}
+          toast={toast}
+          onToggle={() => {}}
+        />
+      </div>
+    );
+  }, [formatSize, onRefresh, showThumbnail, toast, ultraPerformance]);
   const inactiveListData = useMemo(() => ({
     list: filteredInactive,
+    imgVer,
     formatSize,
     onRefresh,
     toast,
@@ -785,9 +884,10 @@ export default function ModsView({
       setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
       setDirty(true);
     }
-  }), [filteredInactive, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
+  }), [filteredInactive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
   const activeListData = useMemo(() => ({
     list: filteredActive,
+    imgVer,
     formatSize,
     onRefresh,
     toast,
@@ -804,7 +904,7 @@ export default function ModsView({
       setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
       setDirty(true);
     }
-  }), [filteredActive, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
+  }), [filteredActive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
 
   // Image lazy loading aligned with virtualized visible ranges
   useEffect(() => {
@@ -830,12 +930,12 @@ export default function ModsView({
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* RIMPY STYLE ACTION BAR */}
-      <div className="flex items-center justify-between p-2 bg-black/40 border-b border-white/5 backdrop-blur-md z-10">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-2 p-2 bg-black/40 border-b border-white/5 backdrop-blur-md z-10">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           <button 
             onClick={saveOrder}
             disabled={!dirty}
-            className={`p-2 rounded-lg flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'} ${
+            className={`shrink-0 whitespace-nowrap p-2 rounded-lg flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'} ${
               dirty ? 'bg-accent text-accent-foreground shadow-lg shadow-accent/20 scale-105' : 'bg-white/5 text-muted-foreground opacity-50'
             }`}
           >
@@ -843,10 +943,10 @@ export default function ModsView({
             <span className="text-xs font-bold uppercase tracking-tighter">{t('common.save')}</span>
           </button>
 
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="mx-2 hidden h-6 w-px bg-white/10 xl:block" />
 
           {/* Profile Dropdown */}
-          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5">
+          <div className="flex min-w-0 shrink items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5">
             <select 
               value={selectedPresetId}
               onChange={async (e) => {
@@ -859,7 +959,7 @@ export default function ModsView({
                   onRefresh();
                 } catch (err: any) { toast(err.toString(), "error"); }
               }}
-              className="bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-widest text-accent px-2 py-1 cursor-pointer"
+              className="min-w-0 max-w-36 bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-widest text-accent px-2 py-1 cursor-pointer"
             >
               <option value="" className="bg-[#1a1b1e]">{t('mods.select_profile')}</option>
               {presets.map(p => (
@@ -919,12 +1019,12 @@ export default function ModsView({
             )}
           </div>
           
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="mx-2 hidden h-6 w-px bg-white/10 xl:block" />
 
-          <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/5">
+          <div className="flex shrink-0 items-center bg-white/5 rounded-lg p-0.5 border border-white/5">
               <button 
               onClick={autoSort}
-              className={`p-1.5 hover:bg-white/10 rounded-md text-accent flex items-center gap-2 group ${ultraPerformance ? '' : 'transition-colors'}`}
+              className={`shrink-0 whitespace-nowrap p-1.5 hover:bg-white/10 rounded-md text-accent flex items-center gap-2 group ${ultraPerformance ? '' : 'transition-colors'}`}
               title={t('mods.auto_sort')}
             >
               <Wand2 size={16} className={ultraPerformance ? "" : "group-hover:rotate-12 transition-transform"} />
@@ -955,14 +1055,14 @@ export default function ModsView({
             </button>
           </div>
 
-          <div className="h-6 w-px bg-white/10 mx-2" />
+          <div className="mx-2 hidden h-6 w-px bg-white/10 xl:block" />
 
           {/* Texture Optimization Cluster */}
-          <div className="flex items-center gap-1 bg-accent/5 p-1 rounded-xl border border-accent/10">
+          <div className="flex shrink-0 items-center gap-1 bg-accent/5 p-1 rounded-xl border border-accent/10">
              {/* Resolution Toggle */}
              <button 
                onClick={() => setResizeRes(prev => prev === 512 ? 1024 : prev === 1024 ? 2048 : 512)}
-               className={`px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent border border-accent/20 hover:bg-accent/10 ${ultraPerformance ? '' : 'transition-colors'}`}
+               className={`shrink-0 whitespace-nowrap px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent border border-accent/20 hover:bg-accent/10 ${ultraPerformance ? '' : 'transition-colors'}`}
                title="Click to Cycle Resolution"
              >
                {resizeRes}px
@@ -971,7 +1071,7 @@ export default function ModsView({
              {/* Compression Toggle */}
              <button 
                onClick={() => setCompressionFormat(prev => prev === "smart" ? "bc7" : prev === "bc7" ? "bc1" : "smart")}
-               className={`px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent/70 border border-accent/10 hover:bg-accent/10 uppercase ${ultraPerformance ? '' : 'transition-colors'}`}
+               className={`shrink-0 whitespace-nowrap px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent/70 border border-accent/10 hover:bg-accent/10 uppercase ${ultraPerformance ? '' : 'transition-colors'}`}
                title="Compression Format"
              >
                {compressionFormat}
@@ -979,7 +1079,7 @@ export default function ModsView({
 
              <button 
               onClick={optimizeAll}
-              className={`p-1.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
+              className={`shrink-0 whitespace-nowrap p-1.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
               title={t('mods.optimize')}
             >
               <Scaling size={16} />
@@ -988,19 +1088,39 @@ export default function ModsView({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          {ultraPerformance && allTags.length > 0 && (
+            <div className="flex shrink-0 items-center bg-white/5 rounded-lg p-1 border border-white/5">
+              <select
+                value={selectedTag ?? ""}
+                onChange={(e) => setSelectedTag(e.target.value || null)}
+                className="max-w-28 bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1 cursor-pointer"
+                title="Filter by tag"
+              >
+                <option value="" className="bg-[#1a1b1e] text-white">
+                  {t('common.all') || 'All'}
+                </option>
+                {allTags.map((tag) => (
+                  <option key={tag} value={tag} className="bg-[#1a1b1e] text-white">
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button 
             onClick={() => invoke("launch_rimworld").catch(e => toast(e.toString(), "error"))}
-            className={`flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs shadow-lg shadow-emerald-900/20 group ${ultraPerformance ? '' : 'transition-all active:scale-95'}`}
+            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs shadow-lg shadow-emerald-900/20 group ${ultraPerformance ? '' : 'transition-all active:scale-95'}`}
           >
             <Play size={16} className="fill-current" />
             <span>{t('mods.launch_game')}</span>
           </button>
 
-          <div className={`flex items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 w-64 shadow-inner ${ultraPerformance ? '' : 'transition-all'}`}>
+          <div className={`flex min-w-[180px] flex-1 items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 max-w-64 shadow-inner ${ultraPerformance ? '' : 'transition-all'}`}>
             <Search size={14} className="text-muted-foreground mr-2" />
             <input 
-              className="bg-transparent border-none outline-none text-xs w-full placeholder:text-muted-foreground/50"
+              className="w-full min-w-0 bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50"
               placeholder={t('mods.search_placeholder')}
               value={modSearchText}
               onChange={e => handleSearchChange(e.target.value)}
@@ -1015,7 +1135,7 @@ export default function ModsView({
                 toast("Mod list refreshed!", "success");
               } catch (e: any) { toast(e.toString(), "error"); }
             }}
-            className={`p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground ${ultraPerformance ? '' : 'transition-all hover:rotate-180 duration-500'}`}
+            className={`shrink-0 p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground ${ultraPerformance ? '' : 'transition-all hover:rotate-180 duration-500'}`}
             title={t('common.refresh')}
           >
             <RefreshCw size={16} />
@@ -1174,23 +1294,10 @@ export default function ModsView({
                   <Droppable
                     droppableId="inactive"
                     mode="virtual"
-                    renderClone={(provided, snapshot, rubric) => (
-                      <ModCard
-                        mod={filteredInactive[rubric.source.index]}
-                        index={rubric.source.index}
-                        showThumbnail={showThumbnail}
-                        ultraPerformance={ultraPerformance}
-                        provided={provided}
-                        isDragging={snapshot.isDragging}
-                        formatSize={formatSize}
-                        onRefresh={onRefresh}
-                        toast={toast}
-                        onToggle={() => {}}
-                      />
-                    )}
+                    renderClone={renderDragClone(filteredInactive, false, inactiveSize.width)}
                   >
-                    {(provided) => (
-                      <div className="h-full w-full">
+                    {(provided, snapshot) => (
+                      <div className={`h-full w-full ${snapshot.isDraggingOver ? 'bg-accent/5' : ''}`}>
                         <List
                           height={inactiveSize.height}
                           itemCount={filteredInactive.length}
@@ -1231,24 +1338,10 @@ export default function ModsView({
                   <Droppable
                     droppableId="active"
                     mode="virtual"
-                    renderClone={(provided, snapshot, rubric) => (
-                      <ModCard
-                        mod={filteredActive[rubric.source.index]}
-                        index={rubric.source.index}
-                        showThumbnail={showThumbnail}
-                        ultraPerformance={ultraPerformance}
-                        provided={provided}
-                        isDragging={snapshot.isDragging}
-                        isActive
-                        formatSize={formatSize}
-                        onRefresh={onRefresh}
-                        toast={toast}
-                        onToggle={() => {}}
-                      />
-                    )}
+                    renderClone={renderDragClone(filteredActive, true, activeSize.width)}
                   >
-                    {(provided) => (
-                      <div className="h-full w-full">
+                    {(provided, snapshot) => (
+                      <div className={`h-full w-full ${snapshot.isDraggingOver ? 'bg-accent/5' : ''}`}>
                         <List
                           height={activeSize.height}
                           itemCount={filteredActive.length}
