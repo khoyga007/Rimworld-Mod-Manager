@@ -122,43 +122,68 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
         return Ok(());
     }
 
-    // Sort files by size (largest first) to balance parallel workload
-    png_files.sort_by_key(|f| std::cmp::Reverse(fs::metadata(f).map(|m| m.len()).unwrap_or(0)));
-
     let total = png_files.len();
     let completed = std::sync::atomic::AtomicUsize::new(0);
+    let failed_count = std::sync::atomic::AtomicUsize::new(0);
 
-    // Process each PNG via texconv (parallelism handled by rayon)
-    let results: Vec<Result<()>> = png_files.par_iter().map(|png_path| {
+    // Group PNG files by their parent directory to batch texconv calls
+    let mut groups: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
+    for png_path in png_files {
         let dds_path = png_path.with_extension("dds");
-        
         // Skip if DDS exists and is newer than PNG
         if dds_path.exists() {
-            if let (Ok(m_png), Ok(m_dds)) = (fs::metadata(png_path), fs::metadata(&dds_path)) {
+            if let (Ok(m_png), Ok(m_dds)) = (fs::metadata(&png_path), fs::metadata(&dds_path)) {
                 if let (Ok(t_png), Ok(t_dds)) = (m_png.modified(), m_dds.modified()) {
                     if t_dds >= t_png {
-                        // Mark as completed without running texconv
-                        let _ = fs::remove_file(png_path); // Clean up if source still exists
-                        let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        if c % 10 == 0 || c == total {
-                            let pct = ((c as f32 / total as f32) * 100.0) as u8;
-                            emit_progress(&app, OptimizeProgress {
-                                mod_id: mod_info.id.clone(),
-                                status: "optimizing".into(),
-                                progress: pct,
-                                message: format!("Skipping {}/{} (already optimized)...", c, total),
-                            });
-                        }
-                        return Ok(());
+                        let _ = fs::remove_file(&png_path);
+                        completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        continue;
                     }
                 }
             }
         }
+        if let Some(parent) = png_path.parent() {
+            groups.entry(parent.to_path_buf()).or_default().push(png_path);
+        }
+    }
 
-        let result = convert_png_with_texconv(&texconv, png_path);
+    let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
+    
+    // Process each directory group in parallel
+    groups_vec.par_iter().for_each(|(parent, files)| {
+        // Process in chunks of 50 to avoid command line length limits
+        for chunk in files.chunks(50) {
+            let mut cmd = Command::new(&texconv);
+            cmd.args([
+                "-f", "BC7_UNORM",
+                "-y",
+                "-vflip",
+                "-aw", "4",
+                "-ah", "4",
+                "-m", "0",
+                "-if", "FANT",
+                "-gpu", "1",
+                "-sepalpha",
+                "-o", &parent.to_string_lossy(),
+            ]);
+            
+            for file in chunk {
+                cmd.arg(file);
+            }
 
-        let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if c % 10 == 0 || c == total {
+            if let Ok(output) = cmd.output() {
+                if output.status.success() {
+                    for file in chunk {
+                        let _ = fs::remove_file(file);
+                    }
+                } else {
+                    failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                }
+            } else {
+                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+
+            let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
             let pct = ((c as f32 / total as f32) * 100.0) as u8;
             emit_progress(&app, OptimizeProgress {
                 mod_id: mod_info.id.clone(),
@@ -167,65 +192,20 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
                 message: format!("Optimizing {}/{} textures...", c, total),
             });
         }
+    });
 
-        result
-    }).collect();
-
-    let failed = results.iter().filter(|r| r.is_err()).count();
-
+    let failed = failed_count.load(std::sync::atomic::Ordering::Relaxed);
+    
     emit_progress(&app, OptimizeProgress {
         mod_id: mod_info.id.clone(),
         status: if failed > 0 { "done_with_errors".into() } else { "done".into() },
         progress: 100,
         message: if failed > 0 {
-            format!("Done! {} optimized, {} failed.", total - failed, failed)
+            format!("Done! {} processed, {} failed.", total - failed, failed)
         } else {
-            format!("Done! All {} textures optimized.", total)
+            format!("Done! All {} textures processed.", total)
         },
     });
-
-    Ok(())
-}
-
-fn convert_png_with_texconv(texconv: &Path, png_path: &Path) -> Result<()> {
-    let parent = png_path.parent().context("No parent dir")?;
-
-    // Run texconv.exe with BC7 compression (same as RimPy):
-    //   -f BC7_UNORM   : BC7 format, widely supported, great quality
-    //   -y             : overwrite existing output
-    //   -sepalpha      : separate alpha for better quality
-    //   -o <dir>       : output to same directory
-    let output = Command::new(texconv)
-        .args([
-            "-f", "BC7_UNORM",
-            "-y",
-            "-vflip",
-            "-aw", "4",         // Ensure width is multiple of 4 for BC7
-            "-ah", "4",         // Ensure height is multiple of 4 for BC7
-            "-m", "0",          // Generate full mipmap chain
-            "-if", "FANT",      // High quality mipmap filter
-            "-gpu", "1",        // Use Dedicated GPU (NVIDIA)
-            "-sepalpha",
-            "-o", &parent.to_string_lossy(),
-        ])
-        .arg(png_path)
-        .output()
-        .context("Failed to run texconv.exe")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        anyhow::bail!("texconv failed: {} {}", stdout, stderr);
-    }
-
-    // Verify DDS was created and has content before deleting PNG
-    let dds_path = png_path.with_extension("dds");
-    if dds_path.exists() {
-        let meta = fs::metadata(&dds_path)?;
-        if meta.len() > 0 {
-            let _ = fs::remove_file(png_path);
-        }
-    }
 
     Ok(())
 }
@@ -284,9 +264,13 @@ pub fn revert_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModI
 
     let total = dds_files.len();
     let completed = std::sync::atomic::AtomicUsize::new(0);
+    let failed_count = std::sync::atomic::AtomicUsize::new(0);
 
-    let results: Vec<Result<()>> = dds_files.par_iter().map(|dds_path| {
-        let result = revert_single_dds_to_png(dds_path);
+    let texconv = texconv_path();
+    dds_files.par_iter().for_each(|dds_path| {
+        if revert_single_dds_to_png(&texconv, dds_path).is_err() {
+            failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
 
         let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         if c % 5 == 0 || c == total {
@@ -298,11 +282,9 @@ pub fn revert_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModI
                 message: format!("Reverting {}/{} textures...", c, total),
             });
         }
+    });
 
-        result
-    }).collect();
-
-    let failed = results.iter().filter(|r| r.is_err()).count();
+    let failed = failed_count.load(std::sync::atomic::Ordering::Relaxed);
 
     emit_progress(&app, OptimizeProgress {
         mod_id: mod_info.id.clone(),
@@ -318,16 +300,26 @@ pub fn revert_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModI
     Ok(())
 }
 
-fn revert_single_dds_to_png(dds_path: &Path) -> Result<()> {
-    let mut reader = std::io::BufReader::new(fs::File::open(dds_path)?);
-    let dds = image_dds::ddsfile::Dds::read(&mut reader).context("Failed to read DDS")?;
-    drop(reader);
+fn revert_single_dds_to_png(texconv: &Path, dds_path: &Path) -> Result<()> {
+    let parent = dds_path.parent().context("No parent dir")?;
 
-    let rgba_img = image_dds::image_from_dds(&dds, 0).context("Failed to decode DDS")?;
+    let output = Command::new(texconv)
+        .args([
+            "-ft", "png",       // Output format PNG
+            "-y",              // Overwrite
+            "-vflip",          // Flip back to normal orientation
+            "-o", &parent.to_string_lossy(),
+        ])
+        .arg(dds_path)
+        .output()
+        .context("Failed to run texconv.exe for revert")?;
 
-    let png_path = dds_path.with_extension("png");
-    rgba_img.save(&png_path).context("Failed to save PNG")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("texconv revert failed: {}", stderr);
+    }
 
+    // Delete DDS after successful revert
     let _ = fs::remove_file(dds_path);
 
     Ok(())
@@ -399,44 +391,74 @@ pub fn resize_mod_textures(
         return Ok(());
     }
 
-    // Sort by size (largest first) to balance parallel workload
-    texture_files.sort_by_key(|f| std::cmp::Reverse(fs::metadata(f).map(|m| m.len()).unwrap_or(0)));
-
     let total = texture_files.len();
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let resized_count = std::sync::atomic::AtomicUsize::new(0);
+    let failed_count = std::sync::atomic::AtomicUsize::new(0);
 
-    let max_res_str = max_res.to_string();
-
-    let results: Vec<Result<bool>> = texture_files.par_iter().map(|tex_path| {
+    // Group files by parent directory
+    let mut groups: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
+    for tex_path in texture_files {
         // SMART SKIP: If it's already a DDS, check if its dimensions are already within limit
         let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
         if ext == "dds" {
-            if let Ok((w, h)) = get_dds_dimensions(tex_path) {
+            if let Ok((w, h)) = get_dds_dimensions(&tex_path) {
                 if w <= max_res && h <= max_res {
-                    let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                    if c % 10 == 0 || c == total {
-                        let pct = ((c as f32 / total as f32) * 100.0) as u8;
-                        emit_progress(&app, OptimizeProgress {
-                            mod_id: mod_info.id.clone(),
-                            status: "resizing".into(),
-                            progress: pct,
-                            message: format!("Skipped {}/{} (already {}px or smaller)", c, total, max_res),
-                        });
-                    }
-                    return Ok(false);
+                    completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    continue;
                 }
             }
         }
-
-        let was_resized = resize_single_texture(&texconv, tex_path, &max_res_str)?;
-
-        if was_resized {
-            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(parent) = tex_path.parent() {
+            groups.entry(parent.to_path_buf()).or_default().push(tex_path);
         }
+    }
 
-        let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if c % 10 == 0 || c == total {
+    let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
+    let max_res_str = max_res.to_string();
+
+    groups_vec.par_iter().for_each(|(parent, files)| {
+        for chunk in files.chunks(50) {
+            let mut cmd = Command::new(&texconv);
+            cmd.args([
+                "-f", "BC7_UNORM",
+                "-y",
+                "-vflip",
+                "-w", &max_res_str,
+                "-h", &max_res_str,
+                "-aw", "4",
+                "-ah", "4",
+                "-m", "0",
+                "-if", "FANT",
+                "-gpu", "1",
+                "-sepalpha",
+                "-o", &parent.to_string_lossy(),
+            ]);
+
+            for file in chunk {
+                cmd.arg(file);
+            }
+
+            if let Ok(output) = cmd.output() {
+                if output.status.success() {
+                    for file in chunk {
+                        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                        if ext == "png" {
+                            let dds_path = file.with_extension("dds");
+                            if dds_path.exists() {
+                                let _ = fs::remove_file(file);
+                            }
+                        }
+                    }
+                    resized_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                } else {
+                    failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+                }
+            } else {
+                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+
+            let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
             let pct = ((c as f32 / total as f32) * 100.0) as u8;
             emit_progress(&app, OptimizeProgress {
                 mod_id: mod_info.id.clone(),
@@ -445,78 +467,23 @@ pub fn resize_mod_textures(
                 message: format!("Resizing {}/{} textures (max {}px)...", c, total, max_res_str),
             });
         }
+    });
 
-        Ok(was_resized)
-    }).collect();
-
-    let failed = results.iter().filter(|r| r.is_err()).count();
+    let failed = failed_count.load(std::sync::atomic::Ordering::Relaxed);
     let actual_resized = resized_count.load(std::sync::atomic::Ordering::Relaxed);
-
+ 
     emit_progress(&app, OptimizeProgress {
         mod_id: mod_info.id.clone(),
         status: if failed > 0 { "done_with_errors".into() } else { "done".into() },
         progress: 100,
         message: if failed > 0 {
-            format!("Done! {} resized, {} skipped, {} failed.", actual_resized, total - actual_resized - failed, failed)
+            format!("Done! {} processed, {} skipped/failed.", actual_resized, total - actual_resized)
         } else {
             format!("Done! {} resized, {} already within {}px.", actual_resized, total - actual_resized, max_res)
         },
     });
 
     Ok(())
-}
-
-/// Resize a single texture file to max_res and convert to BC7 DDS.
-/// Returns true if the file was actually resized (dimensions exceeded max_res).
-fn resize_single_texture(texconv: &Path, tex_path: &Path, max_res: &str) -> Result<bool> {
-    let parent = tex_path.parent().context("No parent dir")?;
-
-    // For DDS files, we need to check current dimensions first.
-    // For PNG files, texconv will handle them directly.
-    // texconv's -w and -h flags set the MAX dimension while preserving aspect ratio
-    // when used with -ft dds.
-
-    let output = Command::new(texconv)
-        .args([
-            "-f", "BC7_UNORM",
-            "-y",
-            "-vflip",
-            "-w", max_res,          // Max width
-            "-h", max_res,          // Max height
-            "-aw", "4",             // Ensure width is multiple of 4 for BC7
-            "-ah", "4",             // Ensure height is multiple of 4 for BC7
-            "-m", "0",              // Generate full mipmap chain
-            "-if", "FANT",      // High quality mipmap filter
-            "-gpu", "1",            // Use Dedicated GPU (NVIDIA) for compression
-            "-sepalpha",
-            "-o", &parent.to_string_lossy(),
-        ])
-        .arg(tex_path)
-        .output()
-        .context("Failed to run texconv.exe")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        anyhow::bail!("texconv resize failed: {} {}", stdout, stderr);
-    }
-
-    // If input was PNG, delete the original PNG (DDS replaces it)
-    let ext = tex_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let dds_path = tex_path.with_extension("dds");
-
-    if ext == "png" && dds_path.exists() {
-        let meta = fs::metadata(&dds_path)?;
-        if meta.len() > 0 {
-            let _ = fs::remove_file(tex_path);
-        }
-    }
-
-    // Check stdout for "resizing" keyword to determine if resize happened
-    let stdout_str = String::from_utf8_lossy(&output.stdout).to_lowercase();
-    let was_resized = stdout_str.contains("resize") || stdout_str.contains("(w:") || stdout_str.contains("(h:");
-
-    Ok(was_resized)
 }
 
 /// Helper to quickly read DDS width/height from the 128-byte header
