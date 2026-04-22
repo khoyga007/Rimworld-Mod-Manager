@@ -237,10 +237,9 @@ function VirtualRow({ index, style, data }: any) {
   );
 }
 
-interface Props {
 export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], onRefresh: () => void, toast: (m: string, t?: string) => void }) {
   const { t } = useTranslation();
-  const [search, setSearch] = useState("");
+  const [modSearchText, setModSearchText] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
