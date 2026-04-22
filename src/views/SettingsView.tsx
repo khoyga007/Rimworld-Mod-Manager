@@ -1,25 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
-import type { RimWorldPaths } from "../types";
+import type { AppSettings, RimWorldPaths } from "../types";
 
 interface Props {
   paths: RimWorldPaths | null;
+  settings: AppSettings;
+  onSettingsChange: (settings: AppSettings) => void;
   onPathsChange: (p: RimWorldPaths) => void;
   toast: (msg: string, type?: string) => void;
 }
 
-export default function SettingsView({ paths, onPathsChange, toast }: Props) {
+export default function SettingsView({ paths, settings, onSettingsChange, onPathsChange, toast }: Props) {
   const { t } = useTranslation();
   const [exePath, setExePath] = useState<string>("");
 
+  const updateSettings = (patch: Partial<AppSettings>, toastKey?: string) => {
+    const next = { ...settings, ...patch };
+    onSettingsChange(next);
+    if (toastKey) {
+      toast(t(toastKey), "success");
+    }
+  };
+
   // Load stored exe on mount
-  useState(() => {
+  useEffect(() => {
     invoke<string | null>("get_stored_exe_path").then((p) => {
       if (p) setExePath(p);
     });
-  });
+  }, []);
 
   const browseGameDir = async () => {
     const selected = await open({ directory: true, title: t('settings.game_directory') });
@@ -51,7 +61,8 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
   };
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
+    <div className="animate-fade-in flex-1 overflow-y-auto custom-scrollbar p-8" style={{ minHeight: 0 }}>
+      <div style={{ maxWidth: 800, margin: "0 auto" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('settings.title')}</h1>
@@ -117,6 +128,125 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <section className="glass-card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(34, 197, 94, 0.12)", color: "#86efac", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+              ⚡
+            </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.performance_mode')}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.performance_mode_desc')}</div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !settings.performanceMode;
+              updateSettings({
+                performanceMode: next,
+                dismissedPerformanceSuggestion: next ? true : settings.dismissedPerformanceSuggestion,
+              }, next ? 'settings.performance_mode_on' : 'settings.performance_mode_off');
+            }}
+            className="w-full"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              padding: 16,
+              borderRadius: 12,
+              border: `1px solid ${settings.performanceMode ? "rgba(34,197,94,0.35)" : "var(--color-border)"}`,
+              background: settings.performanceMode ? "rgba(34, 197, 94, 0.08)" : "rgba(0,0,0,0.2)",
+              color: "var(--color-text)",
+            }}
+          >
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                {settings.performanceMode ? "ON" : "OFF"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>
+                {t('settings.performance_mode_hint')}
+              </div>
+            </div>
+            <div
+              style={{
+                width: 52,
+                height: 30,
+                borderRadius: 999,
+                background: settings.performanceMode ? "rgba(34, 197, 94, 0.85)" : "rgba(255,255,255,0.12)",
+                padding: 4,
+                display: "flex",
+                justifyContent: settings.performanceMode ? "flex-end" : "flex-start",
+                transition: "all 150ms ease",
+              }}
+            >
+              <div
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+                }}
+              />
+            </div>
+          </button>
+        </section>
+
+        <section className="glass-card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.performance_toggles')}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)", marginTop: 6 }}>{t('settings.performance_toggles_desc')}</div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => updateSettings({ disableThumbnails: !settings.disableThumbnails }, settings.disableThumbnails ? 'settings.disable_thumbnails_off' : 'settings.disable_thumbnails_on')}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${settings.disableThumbnails ? "rgba(59,130,246,0.35)" : "var(--color-border)"}`,
+                background: settings.disableThumbnails ? "rgba(59,130,246,0.08)" : "rgba(0,0,0,0.2)",
+                color: "var(--color-text)",
+              }}
+            >
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('settings.disable_thumbnails')}</div>
+                <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>{t('settings.disable_thumbnails_desc')}</div>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{settings.disableThumbnails ? "ON" : "OFF"}</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => updateSettings({ autoSuggestPerformanceMode: !settings.autoSuggestPerformanceMode, dismissedPerformanceSuggestion: false }, settings.autoSuggestPerformanceMode ? 'settings.performance_suggestion_off' : 'settings.performance_suggestion_on')}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${settings.autoSuggestPerformanceMode ? "rgba(168,85,247,0.35)" : "var(--color-border)"}`,
+                background: settings.autoSuggestPerformanceMode ? "rgba(168,85,247,0.08)" : "rgba(0,0,0,0.2)",
+                color: "var(--color-text)",
+              }}
+            >
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('settings.auto_suggest_performance')}</div>
+                <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>{t('settings.auto_suggest_performance_desc')}</div>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{settings.autoSuggestPerformanceMode ? "ON" : "OFF"}</div>
+            </button>
+          </div>
+        </section>
+
         {/* Config Info */}
         <section className="glass-card" style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -161,6 +291,7 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
             Engineered for RimWorld modders.
           </p>
         </section>
+      </div>
       </div>
     </div>
   );

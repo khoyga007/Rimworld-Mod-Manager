@@ -367,19 +367,19 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
         }
     }
 
-    // Set load orders (case-insensitive match)
-    for (i, id) in config.active_mods.iter().enumerate() {
-        let id_lower = id.to_lowercase();
-        if let Some(m) = out.iter_mut().find(|m| m.id.to_lowercase() == id_lower) {
-            m.load_order = i as i32;
-        }
-    }
-    
+    // Set load orders using precomputed lowercase lookups to keep rescans linear
+    let active_order_map: std::collections::HashMap<String, i32> = config
+        .active_mods
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.to_lowercase(), i as i32))
+        .collect();
     let base = config.active_mods.len() as i32;
     let mut k = 0;
-    let active_lower: Vec<String> = config.active_mods.iter().map(|a| a.to_lowercase()).collect();
     for m in out.iter_mut() {
-        if !active_lower.contains(&m.id.to_lowercase()) {
+        if let Some(order) = active_order_map.get(&m.id.to_lowercase()) {
+            m.load_order = *order;
+        } else {
             m.load_order = base + k;
             k += 1;
         }
@@ -797,3 +797,37 @@ pub fn backup_mod_to_local(paths: &RimWorldPaths, mod_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn delete_all_local_mods(paths: &RimWorldPaths) -> Result<u32> {
+    let gd = paths.game_dir.as_ref().context("Game directory not set")?;
+    let local_mods_dir = PathBuf::from(gd).join("Mods");
+
+    if !local_mods_dir.exists() {
+        return Ok(0);
+    }
+
+    // List of protected folder names (standard RimWorld DLCs and Core)
+    let protected_names = ["core", "royalty", "ideology", "biotech", "anomaly"];
+
+    let mut count = 0;
+    for entry in fs::read_dir(&local_mods_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                let name_lower = name.to_lowercase();
+                if protected_names.contains(&name_lower.as_str()) {
+                    eprintln!("[RIMPRO] Skipping protected local folder: {}", name);
+                    continue; 
+                }
+            }
+            
+            match fs::remove_dir_all(&path) {
+                Ok(_) => count += 1,
+                Err(e) => eprintln!("[RIMPRO] Failed to delete folder {:?}: {}", path, e),
+            }
+        }
+    }
+    
+    clear_cache();
+    Ok(count)
+}

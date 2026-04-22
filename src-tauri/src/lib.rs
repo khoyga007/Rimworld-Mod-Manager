@@ -110,6 +110,12 @@ fn set_enabled_set(state: State<AppState>, ids: Vec<String>) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn nuke_local_mods(state: State<AppState>) -> Result<u32, String> {
+    let p = state.paths.lock().unwrap().clone();
+    mods::delete_all_local_mods(&p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn delete_mod(state: State<AppState>, id: String) -> Result<(), String> {
     let p = state.paths.lock().unwrap().clone();
     mods::delete_mod(&p, &id).map_err(|e| e.to_string())
@@ -984,6 +990,13 @@ async fn fetch_mod_hub() -> Result<HubManifest, String> {
 #[tauri::command]
 async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<Vec<crate::about::Dependency>, String> {
     let p = state.paths.lock().unwrap().clone();
+    let normalize = |value: &str| -> String {
+        value
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect()
+    };
     
     // We'll use ZIP download as a simple alternative to Git cloning
     // GitGud/GitHub/GitLab format: {url}/-/archive/{branch}/{name}-{branch}.zip
@@ -1025,7 +1038,7 @@ async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> R
     }
 
     // Install using existing logic
-    mods::install_from_folder(&p, &mod_folder, &provider.name, &about::ModAbout {
+    let installed_folder_name = mods::install_from_folder(&p, &mod_folder, &provider.name, &about::ModAbout {
         name: provider.display_name.clone().unwrap_or(provider.name.clone()),
         author: provider.authors.as_ref().map(|a| a.join(", ")).unwrap_or_default(),
         ..Default::default()
@@ -1037,13 +1050,32 @@ async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> R
     
     // Final check for missing dependencies of this specific mod
     let all_mods = mods::list(&p).map_err(|e| e.to_string())?;
-    let mut target_mod = None;
-    for m in all_mods {
-        if m.name == provider.name || provider.display_name.as_ref().map_or(false, |dn| m.name == *dn) {
-            target_mod = Some(m);
-            break;
-        }
-    }
+    let provider_name = normalize(&provider.name);
+    let provider_display_name = provider
+        .display_name
+        .as_deref()
+        .map(normalize)
+        .filter(|value| !value.is_empty());
+    let installed_folder_name = normalize(&installed_folder_name);
+    let target_mod = all_mods.into_iter().find(|m| {
+        let mod_name = normalize(&m.name);
+        let mod_id = normalize(&m.id);
+        let mod_folder = PathBuf::from(&m.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(normalize)
+            .unwrap_or_default();
+
+        mod_name == provider_name
+            || mod_id == provider_name
+            || mod_folder == provider_name
+            || mod_name == installed_folder_name
+            || mod_id == installed_folder_name
+            || mod_folder == installed_folder_name
+            || provider_display_name.as_ref().is_some_and(|display_name| {
+                mod_name == *display_name || mod_id == *display_name || mod_folder == *display_name
+            })
+    });
     
     if let Some(m) = target_mod {
         Ok(m.missing_dependencies)
@@ -1080,6 +1112,7 @@ pub fn run() {
             set_enabled_set,
             delete_mod,
             backup_mod_to_local,
+            nuke_local_mods,
             restore_all_local_mods,
             optimize_mod_textures,
             optimize_all_local_mods,

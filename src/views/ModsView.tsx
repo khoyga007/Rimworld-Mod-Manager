@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided } from "@hello-pangea/dnd";
 import { FixedSizeList as List } from "react-window";
 
-import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play, Wand2 } from "lucide-react";
+import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play, Wand2, Bomb } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ModInfo, Preset } from "../types";
 import CustomDialog from "../components/CustomDialog";
@@ -16,6 +16,38 @@ const _imgLoading = new Set<string>();
 const IMG_BATCH_SIZE = 8;
 let _imgQueue: { id: string; path: string }[] = [];
 let _imgProcessing = false;
+const NEW_TAG = "NEW";
+const NEW_TAG_WINDOW_SECONDS = 3 * 24 * 60 * 60;
+const IMAGE_PREFETCH_ROWS = 12;
+const INITIAL_VISIBLE_RANGE = { start: 0, stop: 20 };
+const LARGE_MOD_LIST_THRESHOLD = 300;
+const SEARCH_DEBOUNCE_MS = 180;
+
+type VisibleRange = {
+  start: number;
+  stop: number;
+};
+
+function isNewMod(mod: ModInfo) {
+  if (!mod.created_at || mod.created_at <= 1) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return now - mod.created_at <= NEW_TAG_WINDOW_SECONDS;
+}
+
+function getDisplayTags(mod: ModInfo) {
+  const tags = [...(mod.custom_tags || [])];
+  if (isNewMod(mod) && !tags.includes(NEW_TAG)) {
+    tags.unshift(NEW_TAG);
+  }
+  return tags;
+}
+
+function getVisibleMods(list: ModInfo[], range: VisibleRange, prefetchRows: number) {
+  if (list.length === 0) return [];
+  const start = Math.max(0, range.start - prefetchRows);
+  const stop = Math.min(list.length - 1, range.stop + prefetchRows);
+  return list.slice(start, stop + 1);
+}
 
 function processImgQueue(onLoaded: () => void) {
   if (_imgProcessing || _imgQueue.length === 0) return;
@@ -27,6 +59,7 @@ function processImgQueue(onLoaded: () => void) {
       .then((dataUrl) => { _imgCache[item.id] = dataUrl; })
       .catch(() => {})
       .finally(() => {
+        _imgLoading.delete(item.id);
         remaining--;
         if (remaining === 0) {
           _imgProcessing = false;
@@ -41,6 +74,7 @@ const ModCard = memo(({
   mod, 
   index, 
   isActive, 
+  showThumbnail,
   provided,
   isDragging,
   formatSize, 
@@ -51,6 +85,7 @@ const ModCard = memo(({
   mod: ModInfo, 
   index: number, 
   isActive?: boolean, 
+  showThumbnail: boolean,
   provided?: DraggableProvided,
   isDragging?: boolean,
   formatSize: any, 
@@ -85,6 +120,7 @@ const ModCard = memo(({
   };
 
   const removeTag = async (tag: string) => {
+    if (tag === NEW_TAG) return;
     try {
       const tags = (mod.custom_tags || []).filter(t => t !== tag);
       await invoke("set_mod_tags", { id: mod.id, tags });
@@ -115,7 +151,7 @@ const ModCard = memo(({
         )}
         
         <div className="w-12 h-12 rounded-lg bg-black/40 flex-shrink-0 overflow-hidden relative border border-white/5 shadow-inner">
-          {_imgCache[mod.id] ? (
+          {showThumbnail && _imgCache[mod.id] ? (
             <img src={_imgCache[mod.id]} alt="" className="w-full h-full object-cover" loading="lazy" />
           ) : (
             <div className="w-full h-full flex items-center justify-center opacity-30"><Folder size={20} /></div>
@@ -145,12 +181,21 @@ const ModCard = memo(({
       </div>
 
       <div className="flex flex-wrap items-center gap-1 mt-1 border-t border-white/5 pt-2">
-        {mod.custom_tags?.map(t => (
-          <span key={t} className="flex items-center gap-1 text-[9px] bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded-md group/tag">
+        {getDisplayTags(mod).map(t => (
+          <span
+            key={t}
+            className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md ${
+              t === NEW_TAG
+                ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+                : 'bg-accent/10 text-accent border border-accent/20 group/tag'
+            }`}
+          >
             {t}
-            <button onClick={() => removeTag(t)} className="opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400">
-              <X size={10} />
-            </button>
+            {t !== NEW_TAG && (
+              <button onClick={() => removeTag(t)} className="opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400">
+                <X size={10} />
+              </button>
+            )}
           </span>
         ))}
         {addingTag ? (
@@ -225,6 +270,7 @@ function VirtualRow({ index, style, data }: any) {
             mod={mod}
             index={index}
             isActive={data.isActive}
+            showThumbnail={data.showThumbnail}
             provided={provided}
             isDragging={snapshot.isDragging}
             formatSize={data.formatSize}
@@ -263,16 +309,21 @@ export default function ModsView({
   onRefresh, 
   toast,
   selectedPresetId,
-  setSelectedPresetId
+  setSelectedPresetId,
+  performanceMode,
+  disableThumbnails
 }: { 
   mods: ModInfo[], 
   onRefresh: () => void, 
   toast: (m: string, t?: string) => void,
   selectedPresetId: string,
-  setSelectedPresetId: (id: string) => void
+  setSelectedPresetId: (id: string) => void,
+  performanceMode: boolean,
+  disableThumbnails: boolean
 }) {
   const { t } = useTranslation();
   const [modSearchText, setModSearchText] = useState("");
+  const [debouncedModSearchText, setDebouncedModSearchText] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
@@ -300,6 +351,8 @@ export default function ModsView({
   });
   const [analyzing, setAnalyzing] = useState(false);
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [inactiveVisibleRange, setInactiveVisibleRange] = useState<VisibleRange>(INITIAL_VISIBLE_RANGE);
+  const [activeVisibleRange, setActiveVisibleRange] = useState<VisibleRange>(INITIAL_VISIBLE_RANGE);
 
   const inactiveRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
@@ -329,19 +382,13 @@ export default function ModsView({
     setDirty(false);
   }, [mods]);
 
-  // Image lazy loading
   useEffect(() => {
-    let queued = false;
-    const allVisible = [...localActive, ...localInactive];
-    for (const m of allVisible) {
-      if (m.picture && !_imgCache[m.id] && !_imgLoading.has(m.id)) {
-        _imgLoading.add(m.id);
-        _imgQueue.push({ id: m.id, path: m.picture });
-        queued = true;
-      }
-    }
-    if (queued) processImgQueue(bumpImgVer);
-  }, [localActive, localInactive, bumpImgVer]);
+    const handle = window.setTimeout(() => {
+      setDebouncedModSearchText(modSearchText);
+    }, mods.length > LARGE_MOD_LIST_THRESHOLD ? SEARCH_DEBOUNCE_MS : 0);
+
+    return () => window.clearTimeout(handle);
+  }, [modSearchText, mods.length]);
 
   // Listen for progress events
   useEffect(() => {
@@ -387,14 +434,12 @@ export default function ModsView({
         setLocalActive(destItems);
         setLocalInactive(sourceItems);
         setDirty(true);
-        invoke("set_mod_enabled", { id: movedItem.id, enabled: true }).catch(console.error);
       } else {
         movedItem.enabled = false;
         destItems.splice(destination.index, 0, movedItem);
         setLocalActive(sourceItems);
         setLocalInactive(destItems);
         setDirty(true);
-        invoke("set_mod_enabled", { id: movedItem.id, enabled: false }).catch(console.error);
       }
     }
   }, [localActive, localInactive]);
@@ -507,6 +552,23 @@ export default function ModsView({
     });
   };
 
+  const nukeAll = () => {
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      title: "☢️ OPERATION NUKE",
+      message: "CRITICAL WARNING: This will PERMANENTLY DELETE ALL mods in your local Mods folder. This cannot be undone. Are you absolutely sure you want to wipe everything?",
+      onConfirm: async () => {
+        setDialog(prev => ({ ...prev, isOpen: false }));
+        try {
+          const count = await invoke<number>("nuke_local_mods");
+          toast(`Nuke successful! Deleted ${count} local mods.`, "success");
+          onRefresh();
+        } catch (err: any) { toast(err.toString(), "error"); }
+      }
+    });
+  };
+
   const formatSize = (bytes: number) => {
     if (!bytes) return "0 B";
     const k = 1024;
@@ -536,36 +598,57 @@ export default function ModsView({
     setLocalInactive(newInactive);
     setLocalActive(officialMods);
     setDirty(true);
-    
-    // Also update backend for non-official mods
-    otherMods.forEach(m => {
-      invoke("set_mod_enabled", { id: m.id, enabled: false }).catch(console.error);
-    });
   };
 
   const filteredInactive = useMemo(() => {
     return localInactive.filter(m => {
-      const matchesSearch = m.name.toLowerCase().includes(modSearchText.toLowerCase()) || 
-                           m.author?.toLowerCase().includes(modSearchText.toLowerCase());
-      const matchesTag = !selectedTag || m.custom_tags?.includes(selectedTag);
+      const search = debouncedModSearchText.toLowerCase();
+      const matchesSearch = m.name.toLowerCase().includes(search) || 
+                           m.author?.toLowerCase().includes(search);
+      const matchesTag = !selectedTag || getDisplayTags(m).includes(selectedTag);
       return matchesSearch && matchesTag;
     });
-  }, [localInactive, modSearchText, selectedTag]);
+  }, [localInactive, debouncedModSearchText, selectedTag]);
 
   const filteredActive = useMemo(() => {
     return localActive.filter(m => {
-      const matchesSearch = m.name.toLowerCase().includes(modSearchText.toLowerCase()) || 
-                           m.author?.toLowerCase().includes(modSearchText.toLowerCase());
-      const matchesTag = !selectedTag || m.custom_tags?.includes(selectedTag);
+      const search = debouncedModSearchText.toLowerCase();
+      const matchesSearch = m.name.toLowerCase().includes(search) || 
+                           m.author?.toLowerCase().includes(search);
+      const matchesTag = !selectedTag || getDisplayTags(m).includes(selectedTag);
       return matchesSearch && matchesTag;
     });
-  }, [localActive, modSearchText, selectedTag]);
+  }, [localActive, debouncedModSearchText, selectedTag]);
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
-    mods.forEach(m => m.custom_tags?.forEach(t => tags.add(t)));
+    mods.forEach(m => getDisplayTags(m).forEach(t => tags.add(t)));
     return Array.from(tags);
   }, [mods]);
+  const imagePrefetchRows = performanceMode ? 2 : IMAGE_PREFETCH_ROWS;
+  const shouldLoadImages = !disableThumbnails && (!performanceMode || mods.length <= LARGE_MOD_LIST_THRESHOLD);
+  const showThumbnail = !disableThumbnails;
+
+  // Image lazy loading aligned with virtualized visible ranges
+  useEffect(() => {
+    if (!shouldLoadImages) return;
+
+    let queued = false;
+    const visibleMods = [
+      ...getVisibleMods(filteredActive, activeVisibleRange, imagePrefetchRows),
+      ...getVisibleMods(filteredInactive, inactiveVisibleRange, imagePrefetchRows),
+    ];
+
+    for (const m of visibleMods) {
+      if (m.picture && !_imgCache[m.id] && !_imgLoading.has(m.id)) {
+        _imgLoading.add(m.id);
+        _imgQueue.push({ id: m.id, path: m.picture });
+        queued = true;
+      }
+    }
+
+    if (queued) processImgQueue(bumpImgVer);
+  }, [filteredActive, filteredInactive, activeVisibleRange, inactiveVisibleRange, bumpImgVer, imagePrefetchRows, shouldLoadImages]);
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -685,6 +768,13 @@ export default function ModsView({
               title={t('mods.system_restore')}
             >
               <LifeBuoy size={16} />
+            </button>
+            <button 
+              onClick={nukeAll}
+              className="p-1.5 hover:bg-red-500/10 rounded-md text-muted-foreground hover:text-red-500 transition-colors group relative"
+              title="NUKE LOCAL MODS"
+            >
+              <Bomb size={16} />
             </button>
           </div>
 
@@ -838,6 +928,7 @@ export default function ModsView({
                     <ModCard
                       mod={filteredInactive[rubric.source.index]}
                       index={rubric.source.index}
+                      showThumbnail={showThumbnail}
                       provided={provided}
                       isDragging={snapshot.isDragging}
                       formatSize={formatSize}
@@ -855,17 +946,20 @@ export default function ModsView({
                         itemSize={110} // Height + Gap
                         width={inactiveSize.width}
                         outerRef={provided.innerRef}
+                        onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                          setInactiveVisibleRange({ start: visibleStartIndex, stop: visibleStopIndex });
+                        }}
                         itemData={{
                           list: filteredInactive,
                           modSizes,
                           formatSize,
                           onRefresh,
                           toast,
+                          showThumbnail,
                           onToggle: (mod: ModInfo) => {
                             setLocalInactive(prev => prev.filter(m => m.id !== mod.id));
                             setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
                             setDirty(true);
-                            invoke("set_mod_enabled", { id: mod.id, enabled: true }).catch(() => onRefresh());
                           }
                         }}
                         className="custom-scrollbar"
@@ -901,6 +995,7 @@ export default function ModsView({
                     <ModCard
                       mod={filteredActive[rubric.source.index]}
                       index={rubric.source.index}
+                      showThumbnail={showThumbnail}
                       provided={provided}
                       isDragging={snapshot.isDragging}
                       isActive
@@ -919,6 +1014,9 @@ export default function ModsView({
                         itemSize={110}
                         width={activeSize.width}
                         outerRef={provided.innerRef}
+                        onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => {
+                          setActiveVisibleRange({ start: visibleStartIndex, stop: visibleStopIndex });
+                        }}
                         itemData={{
                           list: filteredActive,
                           modSizes,
@@ -926,6 +1024,7 @@ export default function ModsView({
                           onRefresh,
                           toast,
                           isActive: true,
+                          showThumbnail,
                           onToggle: (mod: ModInfo) => {
                             if (mod.source === "official" || mod.author === "Ludeon Studios") {
                               toast("Cannot disable official game content!", "warning");
@@ -934,7 +1033,6 @@ export default function ModsView({
                             setLocalActive(prev => prev.filter(m => m.id !== mod.id));
                             setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
                             setDirty(true);
-                            invoke("set_mod_enabled", { id: mod.id, enabled: false }).catch(() => onRefresh());
                           }
                         }}
                         className="custom-scrollbar"

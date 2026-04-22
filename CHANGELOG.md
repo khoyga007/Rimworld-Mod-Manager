@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-04-22
+
+### Added
+- **Performance Mode Options**: Added a dedicated Settings toggle for Performance Mode, a separate Disable Thumbnails option, and automatic suggestions when very large mod libraries are detected.
+
+### Changed
+- **Low-End Library Handling**: Added debounced search for large mod lists and large Mod Hub manifests to keep typing responsive on older PCs.
+- **Thumbnail Loading Strategy**: Thumbnail prefetch now follows the visible virtualized rows instead of eagerly queuing the whole list.
+
+### Fixed
+- **Dependency Guard Reliability**: Hub installs now identify the newly installed mod more robustly before reporting missing dependencies.
+- **NEW Tag Regression**: Restored automatic NEW badges for recently discovered mods.
+- **Settings Scrolling**: Fixed the Settings page so mouse-wheel scrolling works when the content is taller than the window.
+- **Disable Thumbnails Behavior**: Thumbnail rendering is now fully suppressed when the option is enabled, including thumbnails that were already cached.
+- **Mods View Save Semantics**: Enable/disable actions now stay local until Save, instead of partially persisting immediately.
+- **Large Library Performance**: Reduced avoidable O(n^2) work in backend load-order rebuilds and in frontend Mod Hub installed-state checks.
+
 ## [0.5.1] - 2026-04-22
 
 ### Added

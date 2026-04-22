@@ -53,6 +53,13 @@ export interface Preset {
   note?: string;
 }
 
+export interface AppSettings {
+  performanceMode: boolean;
+  disableThumbnails: boolean;
+  autoSuggestPerformanceMode: boolean;
+  dismissedPerformanceSuggestion: boolean;
+}
+
 export type LoadOrderIssue =
   | { kind: "MissingDependency"; mod_id: string; mod_name: string; missing: string }
   | { kind: "Cycle"; mod_ids: string[]; mod_names: string[] }

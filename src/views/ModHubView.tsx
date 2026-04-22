@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Download, 
@@ -31,19 +31,23 @@ interface HubManifest {
 }
 
 import { Dependency } from '../types';
+const SEARCH_DEBOUNCE_MS = 180;
+const LARGE_HUB_THRESHOLD = 300;
 
 interface Props {
   installedMods: ModInfo[];
   onRefresh: () => void;
   toast: (msg: string, type?: string) => void;
+  performanceMode: boolean;
 }
 
-export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast }) => {
+export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast, performanceMode }) => {
   const { t } = useTranslation();
   const [manifest, setManifest] = useState<HubManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [missingDeps, setMissingDeps] = useState<{mod: string, missing: Dependency[]} | null>(null);
 
@@ -64,6 +68,17 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast })
     fetchHub();
   }, []);
 
+  useEffect(() => {
+    const providerCount = manifest ? Object.values(manifest.providers).reduce((sum, group) => sum + Object.keys(group).length, 0) : 0;
+    const handle = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, providerCount > LARGE_HUB_THRESHOLD ? SEARCH_DEBOUNCE_MS : 0);
+
+    return () => window.clearTimeout(handle);
+  }, [searchQuery, manifest]);
+
+  const normalize = (value: string) => value.toLowerCase().replace(/[-_\s]/g, '');
+
   const handleInstall = async (provider: HubProvider) => {
     setInstalling(provider.name);
     try {
@@ -83,23 +98,39 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast })
     }
   };
 
-  const categories = manifest ? Object.keys(manifest.providers).sort() : [];
-  
-  const filteredMods = (category: string) => {
-    if (!manifest) return [];
-    return Object.values(manifest.providers[category])
-      .filter(m => !m.disabled)
-      .filter(m => 
-        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (m.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (m.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-      );
-  };
+  const normalizedSearch = debouncedSearchQuery.toLowerCase();
+  const categories = useMemo(() => manifest ? Object.keys(manifest.providers).sort() : [], [manifest]);
+  const installedLookup = useMemo(() => {
+    const lookup = new Set<string>();
+    for (const mod of installedMods) {
+      lookup.add(normalize(mod.name));
+      lookup.add(normalize(mod.id));
+      lookup.add(normalize(mod.path));
+      lookup.add(normalize(mod.path.split(/[\\/]/).pop() || ""));
+    }
+    return lookup;
+  }, [installedMods]);
+  const filteredByCategory = useMemo(() => {
+    if (!manifest) return {};
+
+    return Object.fromEntries(
+      Object.entries(manifest.providers).map(([category, providers]) => [
+        category,
+        Object.values(providers)
+          .filter(m => !m.disabled)
+          .filter(m =>
+            m.name.toLowerCase().includes(normalizedSearch) ||
+            (m.display_name || '').toLowerCase().includes(normalizedSearch) ||
+            (m.description || '').toLowerCase().includes(normalizedSearch)
+          ),
+      ])
+    ) as Record<string, HubProvider[]>;
+  }, [manifest, normalizedSearch]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4 py-20">
-        <RefreshCw className="w-12 h-12 text-pink-500 animate-spin" />
+        <RefreshCw className={`w-12 h-12 text-pink-500 ${performanceMode ? '' : 'animate-spin'}`} />
         <p className="text-xl font-medium text-gray-400">{t('mod_hub.loading_msg')}</p>
       </div>
     );
@@ -122,7 +153,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast })
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-500">
+    <div className={`flex flex-col h-full overflow-hidden ${performanceMode ? '' : 'animate-in fade-in duration-500'}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-8 py-6 bg-gray-900/50 border-b border-white/10">
         <div>
@@ -160,7 +191,7 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast })
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
         {categories.map(category => {
-          const mods = filteredMods(category);
+          const mods = filteredByCategory[category] || [];
           if (mods.length === 0) return null;
 
           return (
@@ -212,19 +243,12 @@ export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast })
                           </span>
                         </div>
 
-                        {installedMods.some(m => {
-                          const normalize = (s: string) => s.toLowerCase().replace(/[-_\s]/g, '');
+                        {(() => {
                           const hubName = normalize(mod.name);
                           const hubDisplay = mod.display_name ? normalize(mod.display_name) : hubName;
-                          
-                          const mName = normalize(m.name);
-                          const mId = normalize(m.id);
-                          const mPath = m.path.toLowerCase();
-
-                          return mName === hubName || mName === hubDisplay || 
-                                 mId === hubName || mId === hubDisplay ||
-                                 mPath.includes(mod.name.toLowerCase());
-                        }) ? (
+                          return installedLookup.has(hubName) ||
+                            installedLookup.has(hubDisplay);
+                        })() ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-sm">
                             <CheckCircle2 className="w-4 h-4" />
                             {t('mod_hub.installed')}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ModInfo, RimWorldPaths, DownloadProgress } from "./types";
+import type { ModInfo, RimWorldPaths, DownloadProgress, AppSettings } from "./types";
 import Sidebar from "./components/Sidebar";
 import ModsView from "./views/ModsView";
 import SettingsView from "./views/SettingsView";
@@ -15,6 +15,13 @@ import { ModHubView } from "./views/ModHubView";
 import { useTranslation } from 'react-i18next';
 
 type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
+const APP_SETTINGS_KEY = "rimpro.appSettings";
+const DEFAULT_SETTINGS: AppSettings = {
+  performanceMode: false,
+  disableThumbnails: false,
+  autoSuggestPerformanceMode: true,
+  dismissedPerformanceSuggestion: false,
+};
 
 export default function App() {
   const { t } = useTranslation();
@@ -25,6 +32,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(new Map());
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: string }[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    try {
+      const raw = localStorage.getItem(APP_SETTINGS_KEY);
+      return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
 
   const toast = useCallback((msg: string, type = "info") => {
     const id = Date.now();
@@ -87,8 +102,17 @@ export default function App() {
   }, [toast, refreshMods]);
 
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  
+  useEffect(() => {
+    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(appSettings));
+  }, [appSettings]);
 
   const enabledCount = mods.filter((m) => m.enabled).length;
+  const showPerformanceSuggestion =
+    mods.length > 1000 &&
+    !appSettings.performanceMode &&
+    appSettings.autoSuggestPerformanceMode &&
+    !appSettings.dismissedPerformanceSuggestion;
 
   if (loading) {
     return (
@@ -153,6 +177,48 @@ export default function App() {
         {/* View content */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div className="main-view animate-slide-up h-full flex flex-col overflow-hidden" key={view}>
+            {showPerformanceSuggestion && view !== "settings" && (
+              <div className="glass-card" style={{
+                padding: "16px 20px",
+                marginBottom: 20,
+                borderLeft: "4px solid #22c55e",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+              }}>
+                <span style={{ fontSize: 22 }}>⚡</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: "#86efac", marginBottom: 2 }}>
+                    {t('settings.performance_suggestion_title')}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                    {t('settings.performance_suggestion_body', { count: mods.length })}
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  style={{ fontSize: 12 }}
+                  onClick={() => setAppSettings(prev => ({
+                    ...prev,
+                    performanceMode: true,
+                    dismissedPerformanceSuggestion: true,
+                  }))}
+                >
+                  {t('settings.performance_mode')}
+                </button>
+                <button
+                  className="btn-secondary"
+                  style={{ fontSize: 12 }}
+                  onClick={() => setAppSettings(prev => ({
+                    ...prev,
+                    dismissedPerformanceSuggestion: true,
+                  }))}
+                >
+                  {t('common.dismiss') || 'Dismiss'}
+                </button>
+              </div>
+            )}
+
             {error && view !== "settings" && (
               <div className="glass-card" style={{
                 padding: "20px 24px",
@@ -187,9 +253,11 @@ export default function App() {
                 toast={toast} 
                 selectedPresetId={selectedPresetId}
                 setSelectedPresetId={setSelectedPresetId}
+                performanceMode={appSettings.performanceMode}
+                disableThumbnails={appSettings.disableThumbnails}
               />
             )}
-            {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} />}
+            {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} performanceMode={appSettings.performanceMode} />}
             {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
             {view === "collections" && (
               <CollectionsView 
@@ -204,7 +272,15 @@ export default function App() {
             {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
             {view === "logs" && <LogsView />}
             {view === "guide" && <GuideView />}
-            {view === "settings" && <SettingsView paths={paths} onPathsChange={(p) => { setPaths(p); refreshMods(); }} toast={toast} />}
+            {view === "settings" && (
+              <SettingsView
+                paths={paths}
+                settings={appSettings}
+                onSettingsChange={setAppSettings}
+                onPathsChange={(p) => { setPaths(p); refreshMods(); }}
+                toast={toast}
+              />
+            )}
           </div>
         </div>
       </main>
