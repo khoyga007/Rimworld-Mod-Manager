@@ -3,6 +3,11 @@ export interface Dependency {
   display_name?: string;
 }
 
+export interface CustomTag {
+  label: string;
+  color?: string | null;
+}
+
 export interface ModInfo {
   id: string;
   name: string;
@@ -10,7 +15,7 @@ export interface ModInfo {
   version?: string;
   supported_version?: string;
   tags: string[];
-  custom_tags: string[];
+  custom_tags: CustomTag[];
   custom_note: string;
   workshop_name?: string;
   created_at: number;
@@ -60,6 +65,7 @@ export interface AppSettings {
   disableThumbnails: boolean;
   autoSuggestPerformanceMode: boolean;
   dismissedPerformanceSuggestion: boolean;
+  autoUpdateMods: boolean;
 }
 
 export type LoadOrderIssue =

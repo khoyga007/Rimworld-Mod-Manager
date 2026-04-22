@@ -7,7 +7,7 @@ import { FixedSizeList as List } from "react-window";
 
 import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play, Wand2, Bomb } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { ModInfo, PerformanceLevel, Preset } from "../types";
+import type { CustomTag, ModInfo, PerformanceLevel, Preset } from "../types";
 import CustomDialog from "../components/CustomDialog";
 
 // Global image cache
@@ -31,6 +31,16 @@ const ULTRA_DRAG_DISABLE_THRESHOLD = 800;
 const ULTRA_HARD_OVERSCAN = 1;
 const ULTRA_HARD_SEARCH_DEBOUNCE_MS = 450;
 const MOD_ROW_PADDING = 8;
+const TAG_COLOR_OPTIONS = [
+  "#ff9d00",
+  "#10b981",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#ef4444",
+  "#f59e0b",
+  "#64748b",
+] as const;
 
 type VisibleRange = {
   start: number;
@@ -42,18 +52,45 @@ type SearchableMod = {
   name: string;
   author: string;
   tags: string[];
+  tagColors: string[];
+};
+
+type TagFilterOption = {
+  label: string;
+  color?: string | null;
 };
 
 function isNewMod(mod: ModInfo) {
+  if (mod.source === "official") return false;
   if (!mod.created_at || mod.created_at <= 1) return false;
   const now = Math.floor(Date.now() / 1000);
   return now - mod.created_at <= NEW_TAG_WINDOW_SECONDS;
 }
 
+function normalizeTagLabel(tag: string) {
+  return tag.trim().toLowerCase();
+}
+
+function getTagStyle(color?: string | null) {
+  if (!color) {
+    return {
+      backgroundColor: "rgba(255, 157, 0, 0.1)",
+      color: "var(--color-accent)",
+      border: "1px solid rgba(255, 157, 0, 0.2)",
+    };
+  }
+
+  return {
+    backgroundColor: `${color}1a`,
+    color,
+    border: `1px solid ${color}55`,
+  };
+}
+
 function getDisplayTags(mod: ModInfo) {
   const tags = [...(mod.custom_tags || [])];
-  if (isNewMod(mod) && !tags.includes(NEW_TAG)) {
-    tags.unshift(NEW_TAG);
+  if (isNewMod(mod) && !tags.some((tag) => normalizeTagLabel(tag.label) === normalizeTagLabel(NEW_TAG))) {
+    tags.unshift({ label: NEW_TAG, color: "#f59e0b" });
   }
   return tags;
 }
@@ -70,7 +107,8 @@ function buildSearchIndex(list: ModInfo[], includeAuthor: boolean, includeTags: 
     mod,
     name: mod.name.toLowerCase(),
     author: includeAuthor ? (mod.author || "").toLowerCase() : "",
-    tags: includeTags ? getDisplayTags(mod).map((tag) => tag.toLowerCase()) : [],
+    tags: includeTags ? getDisplayTags(mod).map((tag) => tag.label.toLowerCase()) : [],
+    tagColors: includeTags ? getDisplayTags(mod).map((tag) => (tag.color || "").toLowerCase()) : [],
   }));
 }
 
@@ -126,6 +164,7 @@ const ModCard = memo(({
   const [noteValue, setNoteValue] = useState(mod.custom_note || "");
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState("");
+  const [newTagColor, setNewTagColor] = useState<string>(TAG_COLOR_OPTIONS[0]);
 
   const handleSaveNote = async () => {
     try {
@@ -139,19 +178,24 @@ const ModCard = memo(({
   const handleAddTag = async () => {
     if (!newTag.trim()) { setAddingTag(false); return; }
     try {
-      const tags = [...(mod.custom_tags || []), newTag.trim()];
+      const normalized = normalizeTagLabel(newTag);
+      const tags = [...(mod.custom_tags || [])];
+      if (!tags.some((tag) => normalizeTagLabel(tag.label) === normalized)) {
+        tags.push({ label: newTag.trim(), color: newTagColor });
+      }
       await invoke("set_mod_tags", { id: mod.id, tags });
       setNewTag("");
+      setNewTagColor(TAG_COLOR_OPTIONS[0]);
       setAddingTag(false);
       onRefresh();
       toast("Tag added!", "success");
     } catch (e: any) { toast(e.toString(), "error"); }
   };
 
-  const removeTag = async (tag: string) => {
-    if (tag === NEW_TAG) return;
+  const removeTag = async (tagLabel: string) => {
+    if (normalizeTagLabel(tagLabel) === normalizeTagLabel(NEW_TAG)) return;
     try {
-      const tags = (mod.custom_tags || []).filter(t => t !== tag);
+      const tags = (mod.custom_tags || []).filter((tag) => normalizeTagLabel(tag.label) !== normalizeTagLabel(tagLabel));
       await invoke("set_mod_tags", { id: mod.id, tags });
       onRefresh();
       toast("Tag removed", "info");
@@ -218,19 +262,16 @@ const ModCard = memo(({
           <div className="flex items-center gap-1 mt-1 min-w-0 overflow-hidden">
             {getDisplayTags(mod).slice(0, 3).map((t) => (
               <span
-                key={t}
-                className={`inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded shrink-0 ${
-                  t === NEW_TAG
-                    ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
-                    : 'bg-accent/10 text-accent border border-accent/20'
-                }`}
+                key={t.label}
+                className="inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded shrink-0"
+                style={getTagStyle(t.color)}
               >
-                {t}
-                {t !== NEW_TAG && (
+                {t.label}
+                {normalizeTagLabel(t.label) !== normalizeTagLabel(NEW_TAG) && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      void removeTag(t);
+                      void removeTag(t.label);
                     }}
                     className="hover:text-red-400"
                     title="Remove Tag"
@@ -242,18 +283,35 @@ const ModCard = memo(({
             ))}
 
             {addingTag ? (
-              <input
-                autoFocus
-                className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[8px] w-20 text-white"
-                value={newTag}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setNewTag(e.target.value)}
-                onBlur={handleAddTag}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === 'Enter') handleAddTag();
-                }}
-              />
+              <div className="flex items-center gap-1 shrink-0">
+                <input
+                  autoFocus
+                  className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[8px] w-20 text-white"
+                  value={newTag}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onBlur={handleAddTag}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') handleAddTag();
+                  }}
+                />
+                <div className="flex items-center gap-1 rounded bg-white/5 px-1 py-0.5">
+                  {TAG_COLOR_OPTIONS.map((color) => (
+                    <button
+                      key={color}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNewTagColor(color);
+                      }}
+                      className={`h-3 w-3 rounded-full border ${newTagColor === color ? "border-white" : "border-transparent"}`}
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                </div>
+              </div>
             ) : (
               <button
                 onClick={(e) => {
@@ -339,32 +397,43 @@ const ModCard = memo(({
       </div>
 
       <div className="flex flex-wrap items-center gap-1 mt-1 border-t border-white/5 pt-2">
-        {getDisplayTags(mod).map(t => (
+        {getDisplayTags(mod).map((t) => (
           <span
-            key={t}
-            className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md ${
-              t === NEW_TAG
-                ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
-                : 'bg-accent/10 text-accent border border-accent/20 group/tag'
-            }`}
+            key={t.label}
+            className={`flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md ${normalizeTagLabel(t.label) === normalizeTagLabel(NEW_TAG) ? "" : "group/tag"}`}
+            style={getTagStyle(t.color)}
           >
-            {t}
-            {t !== NEW_TAG && (
-              <button onClick={() => removeTag(t)} className={ultraPerformance ? "hover:text-red-400" : "opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400"}>
+            {t.label}
+            {normalizeTagLabel(t.label) !== normalizeTagLabel(NEW_TAG) && (
+              <button onClick={() => removeTag(t.label)} className={ultraPerformance ? "hover:text-red-400" : "opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400"}>
                 <X size={10} />
               </button>
             )}
           </span>
         ))}
         {addingTag ? (
-          <input 
-            autoFocus
-            className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[9px] w-20"
-            value={newTag}
-            onChange={e => setNewTag(e.target.value)}
-            onBlur={handleAddTag}
-            onKeyDown={e => e.key === 'Enter' && handleAddTag()}
-          />
+          <div className="flex items-center gap-1">
+            <input 
+              autoFocus
+              className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[9px] w-20"
+              value={newTag}
+              onChange={e => setNewTag(e.target.value)}
+              onBlur={handleAddTag}
+              onKeyDown={e => e.key === 'Enter' && handleAddTag()}
+            />
+            <div className="flex items-center gap-1 rounded bg-white/5 px-1 py-0.5">
+              {TAG_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setNewTagColor(color)}
+                  className={`h-3 w-3 rounded-full border ${newTagColor === color ? "border-white" : "border-transparent"}`}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
+            </div>
+          </div>
         ) : (
           <button onClick={() => setAddingTag(true)} className={`text-[9px] text-muted-foreground hover:text-accent bg-white/5 px-1.5 py-0.5 rounded-md ${ultraPerformance ? '' : 'transition-colors'}`}>
             <Plus size={10} />
@@ -509,6 +578,7 @@ export default function ModsView({
   const [debouncedModSearchText, setDebouncedModSearchText] = useState("");
   const deferredSearchText = useDeferredValue(debouncedModSearchText);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTagColor, setSelectedTagColor] = useState<string | null>(null);
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -808,27 +878,43 @@ export default function ModsView({
   const filteredInactive = useMemo(() => {
     const search = deferredSearchText.toLowerCase();
     const activeTag = selectedTag;
-    return inactiveSearchIndex.filter(({ name, author, tags }) => {
+    const activeColor = selectedTagColor?.toLowerCase() ?? null;
+    return inactiveSearchIndex.filter(({ name, author, tags, tagColors }) => {
       const matchesSearch = !search || name.includes(search) || author.includes(search);
       const matchesTag = !activeTag || tags.includes(activeTag.toLowerCase());
-      return matchesSearch && matchesTag;
+      const matchesColor = !activeColor || tagColors.includes(activeColor);
+      return matchesSearch && matchesTag && matchesColor;
     }).map(({ mod }) => mod);
-  }, [inactiveSearchIndex, deferredSearchText, selectedTag]);
+  }, [inactiveSearchIndex, deferredSearchText, selectedTag, selectedTagColor]);
 
   const filteredActive = useMemo(() => {
     const search = deferredSearchText.toLowerCase();
     const activeTag = selectedTag;
-    return activeSearchIndex.filter(({ name, author, tags }) => {
+    const activeColor = selectedTagColor?.toLowerCase() ?? null;
+    return activeSearchIndex.filter(({ name, author, tags, tagColors }) => {
       const matchesSearch = !search || name.includes(search) || author.includes(search);
       const matchesTag = !activeTag || tags.includes(activeTag.toLowerCase());
-      return matchesSearch && matchesTag;
+      const matchesColor = !activeColor || tagColors.includes(activeColor);
+      return matchesSearch && matchesTag && matchesColor;
     }).map(({ mod }) => mod);
-  }, [activeSearchIndex, deferredSearchText, selectedTag]);
+  }, [activeSearchIndex, deferredSearchText, selectedTag, selectedTagColor]);
 
   const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    mods.forEach(m => getDisplayTags(m).forEach(t => tags.add(t)));
-    return Array.from(tags);
+    const tags = new Map<string, TagFilterOption>();
+    mods.forEach((m) => getDisplayTags(m).forEach((t) => {
+      const key = t.label.toLowerCase();
+      if (!tags.has(key)) {
+        tags.set(key, { label: t.label, color: t.color });
+      }
+    }));
+    return Array.from(tags.values());
+  }, [mods]);
+  const allTagColors = useMemo(() => {
+    const colors = new Set<string>();
+    mods.forEach((m) => getDisplayTags(m).forEach((t) => {
+      if (t.color) colors.add(t.color);
+    }));
+    return Array.from(colors);
   }, [mods]);
   const imagePrefetchRows = ultraPerformance ? 0 : performanceMode ? 2 : IMAGE_PREFETCH_ROWS;
   const shouldLoadImages = !disableThumbnails && !ultraPerformance && (!performanceMode || mods.length <= LARGE_MOD_LIST_THRESHOLD);
@@ -931,7 +1017,7 @@ export default function ModsView({
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* RIMPY STYLE ACTION BAR */}
       <div className="flex flex-wrap items-center gap-2 p-2 bg-black/40 border-b border-white/5 backdrop-blur-md z-10">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+        <div className="flex min-w-0 shrink flex-wrap items-center gap-1">
           <button 
             onClick={saveOrder}
             disabled={!dirty}
@@ -1088,7 +1174,7 @@ export default function ModsView({
           </div>
         </div>
 
-        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">
           {ultraPerformance && allTags.length > 0 && (
             <div className="flex shrink-0 items-center bg-white/5 rounded-lg p-1 border border-white/5">
               <select
@@ -1101,11 +1187,31 @@ export default function ModsView({
                   {t('common.all') || 'All'}
                 </option>
                 {allTags.map((tag) => (
-                  <option key={tag} value={tag} className="bg-[#1a1b1e] text-white">
-                    {tag}
+                  <option key={tag.label} value={tag.label} className="bg-[#1a1b1e] text-white">
+                    {tag.label}
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+          {ultraPerformance && allTagColors.length > 0 && (
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-white/5 p-1">
+              <button
+                onClick={() => setSelectedTagColor(null)}
+                className={`rounded px-2 py-1 text-[10px] font-bold uppercase ${selectedTagColor ? "text-muted-foreground" : "bg-white/10 text-white"}`}
+                title="All colors"
+              >
+                All
+              </button>
+              {allTagColors.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => setSelectedTagColor((prev) => prev === color ? null : color)}
+                  className={`h-4 w-4 rounded-full border ${selectedTagColor === color ? "border-white" : "border-transparent"}`}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
             </div>
           )}
 
@@ -1117,7 +1223,7 @@ export default function ModsView({
             <span>{t('mods.launch_game')}</span>
           </button>
 
-          <div className={`flex min-w-[180px] flex-1 items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 max-w-64 shadow-inner ${ultraPerformance ? '' : 'transition-all'}`}>
+          <div className={`flex min-w-[180px] w-56 items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 shadow-inner ${ultraPerformance ? '' : 'transition-all'}`}>
             <Search size={14} className="text-muted-foreground mr-2" />
             <input 
               className="w-full min-w-0 bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50"
@@ -1147,22 +1253,35 @@ export default function ModsView({
       {!ultraPerformance && allTags.length > 0 && (
         <div className="flex items-center gap-1 p-2 bg-black/20 border-b border-white/5 overflow-x-auto no-scrollbar">
           <button 
-            onClick={() => setSelectedTag(null)}
+            onClick={() => {
+              setSelectedTag(null);
+              setSelectedTagColor(null);
+            }}
             className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${ultraPerformance ? '' : 'transition-all'} ${
-              !selectedTag ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+              !selectedTag && !selectedTagColor ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
             }`}
           >
             {t('common.all') || 'All'}
           </button>
+          {allTagColors.map((color) => (
+            <button
+              key={color}
+              onClick={() => setSelectedTagColor((prev) => prev === color ? null : color)}
+              className={`h-6 w-6 rounded-full border-2 shrink-0 ${selectedTagColor === color ? 'border-white shadow-sm' : 'border-transparent'}`}
+              style={{ backgroundColor: color }}
+              title={color}
+            />
+          ))}
           {allTags.map(tag => (
             <button 
-              key={tag}
-              onClick={() => setSelectedTag(tag)}
-              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${ultraPerformance ? '' : 'transition-all'} ${
-                selectedTag === tag ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+              key={tag.label}
+              onClick={() => setSelectedTag(tag.label)}
+              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap border ${ultraPerformance ? '' : 'transition-all'} ${
+                selectedTag === tag.label ? 'shadow-sm brightness-110' : 'hover:brightness-110'
               }`}
+              style={selectedTag === tag.label ? getTagStyle(tag.color) : getTagStyle(tag.color)}
             >
-              {tag}
+              {tag.label}
             </button>
           ))}
         </div>

@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   disableThumbnails: false,
   autoSuggestPerformanceMode: true,
   dismissedPerformanceSuggestion: false,
+  autoUpdateMods: false,
 };
 
 export default function App() {
@@ -107,6 +108,8 @@ export default function App() {
       if (ev.payload.status === "done") {
         toast(`Mod ${ev.payload.workshop_id} installed!`, "success");
         refreshMods();
+      } else if (ev.payload.status === "updated") {
+        refreshMods();
       } else if (ev.payload.status === "error") {
         toast(`Error: ${ev.payload.message}`, "error");
       }
@@ -115,10 +118,32 @@ export default function App() {
   }, [toast, refreshMods]);
 
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [autoUpdateStarted, setAutoUpdateStarted] = useState(false);
   
   useEffect(() => {
     localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(appSettings));
   }, [appSettings]);
+
+  useEffect(() => {
+    if (loading || !paths || autoUpdateStarted || !appSettings.autoUpdateMods) return;
+
+    setAutoUpdateStarted(true);
+    invoke<{ checked: number; updated: number; failed: number; skipped: number }>("auto_update_mods")
+      .then((result) => {
+        if (result.updated > 0) {
+          toast(`Auto-updated ${result.updated} mod(s).`, "success");
+          refreshMods();
+        } else if (result.checked > 0) {
+          toast("All workshop mods are up to date.", "info");
+        }
+        if (result.failed > 0) {
+          toast(`${result.failed} mod update(s) failed.`, "error");
+        }
+      })
+      .catch((e: any) => {
+        toast(`Auto-update failed: ${e?.toString() || "Unknown error"}`, "error");
+      });
+  }, [appSettings.autoUpdateMods, autoUpdateStarted, loading, paths, refreshMods, toast]);
 
   const enabledCount = mods.filter((m) => m.enabled).length;
   const performanceEnabled = appSettings.performanceLevel !== "normal";

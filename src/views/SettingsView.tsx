@@ -229,6 +229,28 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
               <div style={{ fontSize: 12, fontWeight: 700 }}>{settings.autoSuggestPerformanceMode ? "ON" : "OFF"}</div>
             </button>
 
+            <button
+              type="button"
+              onClick={() => updateSettings({ autoUpdateMods: !settings.autoUpdateMods }, settings.autoUpdateMods ? 'settings.auto_update_mods_off' : 'settings.auto_update_mods_on')}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${settings.autoUpdateMods ? "rgba(16,185,129,0.35)" : "var(--color-border)"}`,
+                background: settings.autoUpdateMods ? "rgba(16,185,129,0.08)" : "rgba(0,0,0,0.2)",
+                color: "var(--color-text)",
+              }}
+            >
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('settings.auto_update_mods')}</div>
+                <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 4 }}>{t('settings.auto_update_mods_desc')}</div>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{settings.autoUpdateMods ? "ON" : "OFF"}</div>
+            </button>
+
             {performanceEnabled && (
               <div style={{ fontSize: 12, color: "var(--color-text-dim)", paddingTop: 6 }}>
                 {t('settings.performance_mode_hint')}

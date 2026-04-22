@@ -30,6 +30,34 @@ pub enum ModSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomTag {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum StoredCustomTag {
+    Label(String),
+    Tag(CustomTag),
+}
+
+fn deserialize_custom_tags<'de, D>(deserializer: D) -> std::result::Result<Vec<CustomTag>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Vec::<StoredCustomTag>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .map(|item| match item {
+            StoredCustomTag::Label(label) => CustomTag { label, color: None },
+            StoredCustomTag::Tag(tag) => tag,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModInfo {
     pub id: String, // Equivalent to packageId
     pub name: String,
@@ -50,7 +78,7 @@ pub struct ModInfo {
     pub enabled: bool,
     pub load_order: i32,
     pub size_bytes: u64,
-    pub custom_tags: Vec<String>,
+    pub custom_tags: Vec<CustomTag>,
     pub custom_note: String,
     pub workshop_name: Option<String>,
     pub created_at: u64,
@@ -59,7 +87,8 @@ pub struct ModInfo {
 // Custom Metadata Storage (Tags + Notes + Workshop Names + Performance Cache)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CustomMetadata {
-    pub tags: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_custom_tags")]
+    pub tags: Vec<CustomTag>,
     pub note: String,
     pub workshop_name: Option<String>,
     pub first_seen_at: Option<u64>,
@@ -115,7 +144,7 @@ fn read_custom_metadata(paths: &RimWorldPaths) -> CustomMetadataMap {
         let mut new_map = CustomMetadataMap::new();
         for (id, tags) in old_map {
             new_map.insert(id, CustomMetadata { 
-                tags, 
+                tags: tags.into_iter().map(|label| CustomTag { label, color: None }).collect(),
                 note: String::new(), 
                 workshop_name: None, 
                 first_seen_at: Some(1), 
@@ -221,7 +250,7 @@ fn queue_size_cache_refresh(paths: RimWorldPaths, updates: Vec<(String, PathBuf,
 }
 
 
-pub fn set_mod_tags(paths: &RimWorldPaths, id: &str, tags: Vec<String>) -> Result<()> {
+pub fn set_mod_tags(paths: &RimWorldPaths, id: &str, tags: Vec<CustomTag>) -> Result<()> {
     let mut map = read_custom_metadata(paths);
     let entry = map.entry(id.to_string()).or_default();
     entry.tags = tags.clone();
@@ -609,9 +638,9 @@ fn load_mod_smart(
     let mut custom_tags = vec![];
     let is_external = remote_file_id.is_none() && source == ModSource::Local && !REQUIRED_MOD_IDS.contains(&id_lower.as_str());
     if is_external {
-        custom_tags.push("Third-Party".to_string());
+        custom_tags.push(CustomTag { label: "Third-Party".to_string(), color: Some("#10b981".to_string()) });
         if id_lower.contains("rjw") || name.to_lowercase().contains("rimjobworld") {
-            custom_tags.push("RJW Ecosystem".to_string());
+            custom_tags.push(CustomTag { label: "RJW Ecosystem".to_string(), color: Some("#ec4899".to_string()) });
         }
     }
 
