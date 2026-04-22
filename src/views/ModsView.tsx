@@ -603,10 +603,18 @@ const ModCard = memo(({ mod, index, modSizes, formatSize, onRefresh, isActive }:
                    Missing: <span className="text-white font-bold">{mod.missing_dependencies.join(", ")}</span>
                  </div>
                  <button 
-                  onClick={() => { /* Potential future: Jump to Mod Hub search */ }}
+                  onClick={(e) => { 
+                    e.stopPropagation();
+                    const firstDep = mod.missing_dependencies[0];
+                    if (mod.source === 'workshop') {
+                      invoke("open_path_or_url", { target: `https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=${firstDep}` });
+                    } else {
+                      invoke("open_path_or_url", { target: `https://www.google.com/search?q=RimWorld+mod+packageid+${firstDep}` });
+                    }
+                  }}
                   className="mt-1 text-[9px] font-bold text-red-400/60 hover:text-red-400 uppercase tracking-widest transition-colors"
                  >
-                   Find on Mod Hub →
+                   {mod.source === 'workshop' ? "Search on Steam Workshop →" : "Find External Dependency →"}
                  </button>
                </div>
              </div>
