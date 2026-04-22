@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import type { LogPayload } from "../types";
 
 type LogFilter = "all" | "errors" | "warnings" | "mods";
 
 export default function LogsView() {
+  const { t } = useTranslation();
   const [log, setLog] = useState<LogPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [tailing, setTailing] = useState(false);
@@ -86,10 +88,10 @@ export default function LogsView() {
   };
 
   const filterButtons: { id: LogFilter; label: string; icon: string }[] = [
-    { id: "all", label: "All", icon: "📋" },
-    { id: "errors", label: `Errors (${stats.errors})`, icon: "🔴" },
-    { id: "warnings", label: `Warnings (${stats.warnings})`, icon: "🟡" },
-    { id: "mods", label: "Mod Logs", icon: "📦" },
+    { id: "all", label: t('logs.all'), icon: "📋" },
+    { id: "errors", label: `${t('logs.errors')} (${stats.errors})`, icon: "🔴" },
+    { id: "warnings", label: `${t('logs.warnings')} (${stats.warnings})`, icon: "🟡" },
+    { id: "mods", label: t('logs.mod_logs'), icon: "📦" },
   ];
 
   return (
@@ -97,19 +99,19 @@ export default function LogsView() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Game Logs</h1>
-          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Real-time terminal output and error analysis</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('logs.title')}</h1>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('logs.subtitle')}</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {log && <span style={{ fontSize: 11, color: "var(--color-text-dim)", marginRight: 8, fontFamily: "var(--font-mono)" }}>{log.path}</span>}
-          <button className="btn-secondary" onClick={scrollToBottom} style={{ fontSize: 13, padding: "6px 12px" }}>⬇ Bottom</button>
-          <button className="btn-secondary" onClick={loadLog} style={{ fontSize: 13, padding: "6px 12px" }}>🔄 Refresh</button>
+          <button className="btn-secondary" onClick={scrollToBottom} style={{ fontSize: 13, padding: "6px 12px" }}>⬇ {t('logs.bottom')}</button>
+          <button className="btn-secondary" onClick={loadLog} style={{ fontSize: 13, padding: "6px 12px" }}>🔄 {t('logs.refresh')}</button>
           <button
             className={tailing ? "btn-danger" : "btn-primary"}
             onClick={toggleTail}
             style={{ fontSize: 13, padding: "6px 16px" }}
           >
-            {tailing ? "⏹ Stop Tail" : "▶ Live Tail"}
+            {tailing ? `⏹ ${t('logs.stop_tail')}` : `▶ ${t('logs.live_tail')}`}
           </button>
         </div>
       </div>
@@ -146,7 +148,7 @@ export default function LogsView() {
           <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.5 }}>🔍</span>
           <input
             className="input-field"
-            placeholder="Search logs..."
+            placeholder={t('logs.search_placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: "100%", paddingLeft: 36, background: "rgba(0,0,0,0.2)" }}
@@ -157,11 +159,11 @@ export default function LogsView() {
       {/* Stats bar */}
       <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 12, color: "var(--color-text-dim)", padding: "0 8px" }}>
         <span style={{ fontWeight: 600, color: "var(--color-text)" }}>
-          Showing {filteredLines.length} of {stats.total} lines
+          {t('logs.showing', { count: filteredLines.length, total: stats.total })}
         </span>
         <div style={{ display: "flex", gap: 16, marginLeft: "auto" }}>
-          {stats.errors > 0 && <span style={{ color: "var(--color-danger)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-danger)"}}/> {stats.errors} Errors</span>}
-          {stats.warnings > 0 && <span style={{ color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-warning)"}}/> {stats.warnings} Warnings</span>}
+          {stats.errors > 0 && <span style={{ color: "var(--color-danger)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-danger)"}}/> {t('logs.errors_count', { count: stats.errors })}</span>}
+          {stats.warnings > 0 && <span style={{ color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 4 }}><div style={{width:6,height:6,borderRadius:"50%",background:"var(--color-warning)"}}/> {t('logs.warnings_count', { count: stats.warnings })}</span>}
         </div>
       </div>
 
@@ -185,7 +187,7 @@ export default function LogsView() {
         {loading ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--color-text-dim)", padding: 20 }}>
             <div style={{ width: 20, height: 20, border: "2px solid var(--color-border)", borderTop: "2px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-            Loading log file...
+            {t('logs.loading')}
           </div>
         ) : filteredLines.length > 0 ? (
           <>
@@ -212,8 +214,8 @@ export default function LogsView() {
           <div style={{ textAlign: "center", padding: 60, color: "var(--color-text-dim)" }}>
             <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.2 }}>📄</div>
             {lines.length === 0
-              ? "No log data found. Launch RimWorld to generate logs."
-              : "No lines match the current filter and search."
+              ? t('logs.no_data')
+              : t('logs.no_match')
             }
           </div>
         )}

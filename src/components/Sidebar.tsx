@@ -62,9 +62,9 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
         justifyContent: "space-around",
         background: "rgba(255,255,255,0.02)"
       }}>
-        <Stat label="Total" value={modCount} />
+        <Stat label={t('common.total')} value={modCount} />
         <div style={{ width: 1, background: "var(--color-border)", margin: "4px 0" }}></div>
-        <Stat label="Active" value={enabledCount} color="var(--color-success)" />
+        <Stat label={t('common.active')} value={enabledCount} color="var(--color-success)" />
       </div>
 
       {/* Navigation */}

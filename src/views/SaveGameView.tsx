@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import type { SaveGameInfo, SaveAnalysis } from "../types";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function SaveGameView({ toast, onRefresh }: Props) {
+  const { t } = useTranslation();
   const [saves, setSaves] = useState<SaveGameInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<SaveAnalysis | null>(null);
@@ -20,7 +22,7 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
       const list = await invoke<SaveGameInfo[]>("list_save_games");
       setSaves(list);
     } catch (e: any) {
-      toast(e?.toString() || "Failed to load saves", "error");
+      toast(e?.toString() || t('save_games.failed_to_load'), "error");
     } finally {
       setLoading(false);
     }
@@ -35,12 +37,12 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
       const result = await invoke<SaveAnalysis>("analyze_save_game", { fileName });
       setAnalysis(result);
       if (result.missing_mods.length > 0) {
-        toast(`Found ${result.missing_mods.length} missing mod(s)`, "warning");
+        toast(t('save_games.missing_mods_found', { count: result.missing_mods.length }), "warning");
       } else {
-        toast("All mods present! Save is compatible ✓", "success");
+        toast(t('save_games.all_mods_present'), "success");
       }
     } catch (e: any) {
-      toast(e?.toString() || "Analysis failed", "error");
+      toast(e?.toString() || t('common.error'), "error");
     } finally {
       setAnalyzing(false);
     }
@@ -60,7 +62,7 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
       } catch (_) { /* mod might not be installed */ }
     }
     onRefresh();
-    toast("Attempted to enable all missing mods", "info");
+    toast(t('save_games.attempt_enable'), "info");
   };
 
   return (
@@ -68,16 +70,16 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
       {/* Page Header */}
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Save Games</h1>
-          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Analyze save files to find missing mods or check compatibility</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('save_games.title')}</h1>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('save_games.subtitle')}</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <button className="btn-secondary" onClick={loadSaves} title="Refresh Saves" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>🔄</span> Refresh
+          <button className="btn-secondary" onClick={loadSaves} title={t('save_games.refresh_title')} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🔄</span> {t('save_games.refresh')}
           </button>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{saves.length}</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Saves Found</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>{t('save_games.saves_found')}</div>
           </div>
         </div>
       </div>
@@ -85,15 +87,15 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
       {loading ? (
         <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
           <div style={{ width: 40, height: 40, border: "4px solid var(--color-border)", borderTop: "4px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite", margin: "0 auto 20px" }} />
-          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>Scanning Saves...</h3>
-          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Reading save files from your RimWorld directory.</p>
+          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>{t('save_games.scanning')}</h3>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('save_games.scanning_desc')}</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : saves.length === 0 ? (
         <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>🗺️</div>
-          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>No Save Games Found</h3>
-          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Start a colony in RimWorld to create save files.</p>
+          <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>{t('save_games.no_saves')}</h3>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('save_games.no_saves_desc')}</p>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 24, flex: 1, overflow: "hidden" }}>
@@ -123,7 +125,7 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                     {save.colony_name || save.file_name.replace(".rws", "")}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--color-text-dim)", display: "flex", gap: 8 }}>
-                    <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{save.mod_ids.length} mods</span>
+                    <span style={{ color: "var(--color-accent)", fontWeight: 500 }}>{t('save_games.mods_count', { count: save.mod_ids.length })}</span>
                     <span>•</span>
                     <span>{formatSize(save.file_size)}</span>
                   </div>
@@ -137,7 +139,7 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
             {analyzing ? (
               <div className="glass-card" style={{ padding: 60, textAlign: "center" }}>
                 <div style={{ width: 40, height: 40, border: "4px solid var(--color-border)", borderTop: "4px solid var(--color-accent)", borderRadius: "50%", animation: "spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite", margin: "0 auto 20px" }} />
-                <h3 style={{ color: "var(--color-text-muted)" }}>Analyzing Save File...</h3>
+                <h3 style={{ color: "var(--color-text-muted)" }}>{t('save_games.analyzing')}</h3>
               </div>
             ) : analysis ? (
               <div className="animate-slide-up" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -152,8 +154,8 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                         {analysis.save.colony_name || analysis.save.file_name}
                       </h2>
                       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                        {analysis.save.game_version && <span className="badge">🎮 {analysis.save.game_version}</span>}
-                        {analysis.save.seed && <span className="badge">🌱 Seed: {analysis.save.seed}</span>}
+                        {analysis.save.game_version && <span className="badge">🎮 {t('save_games.version')} {analysis.save.game_version}</span>}
+                        {analysis.save.seed && <span className="badge">🌱 {t('save_games.seed')}: {analysis.save.seed}</span>}
                         <span className="badge">💾 {formatSize(analysis.save.file_size)}</span>
                       </div>
                     </div>
@@ -164,17 +166,17 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                   <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: "4px solid var(--color-border)" }}>
                     <div style={{ fontSize: 32, fontWeight: 700, color: "var(--color-text)", marginBottom: 4 }}>{analysis.save.mod_ids.length}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Total Mods</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{t('save_games.total_mods')}</div>
                   </div>
                   <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: "4px solid var(--color-success)", background: "linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, transparent 100%)" }}>
                     <div style={{ fontSize: 32, fontWeight: 700, color: "var(--color-success)", marginBottom: 4 }}>{analysis.present_mods.length}</div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Present</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{t('save_games.present')}</div>
                   </div>
                   <div className="glass-card" style={{ padding: 20, textAlign: "center", borderTop: analysis.missing_mods.length > 0 ? "4px solid var(--color-danger)" : "4px solid var(--color-border)", background: analysis.missing_mods.length > 0 ? "linear-gradient(180deg, rgba(239, 68, 68, 0.05) 0%, transparent 100%)" : "transparent" }}>
                     <div style={{ fontSize: 32, fontWeight: 700, color: analysis.missing_mods.length > 0 ? "var(--color-danger)" : "var(--color-text)", marginBottom: 4 }}>
                       {analysis.missing_mods.length}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Missing</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{t('save_games.missing')}</div>
                   </div>
                 </div>
 
@@ -184,10 +186,10 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(239, 68, 68, 0.2)", color: "var(--color-danger)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✕</div>
-                        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--color-danger)" }}>Missing Mods</h3>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--color-danger)" }}>{t('save_games.missing_mods')}</h3>
                       </div>
                       <button className="btn-primary" onClick={enableMissing}>
-                        Enable All Installed
+                        {t('save_games.enable_installed')}
                       </button>
                     </div>
                     <div style={{ display: "grid", gap: 8 }}>
@@ -216,7 +218,7 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
                 <details className="glass-card" style={{ padding: 24 }}>
                   <summary style={{ fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(16, 185, 129, 0.2)", color: "var(--color-success)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✓</div>
-                    <span>Present Mods ({analysis.present_mods.length})</span>
+                    <span>{t('save_games.present_mods')} ({analysis.present_mods.length})</span>
                   </summary>
                   <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
                     {analysis.present_mods.map((id) => (
@@ -230,8 +232,8 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
             ) : (
               <div className="glass-card" style={{ padding: "100px 40px", textAlign: "center", borderStyle: "dashed" }}>
                 <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>👈</div>
-                <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>Select a Save File</h3>
-                <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Click a save on the left to check mod compatibility and missing dependencies.</p>
+                <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>{t('save_games.select_save')}</h3>
+                <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('save_games.select_save_desc')}</p>
               </div>
             )}
           </div>

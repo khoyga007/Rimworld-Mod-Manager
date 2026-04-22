@@ -1,14 +1,18 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import type { ModInfo, Preset } from "../types";
 
 interface Props {
   mods: ModInfo[];
   toast: (msg: string, type?: string) => void;
   onRefresh: () => void;
+  selectedPresetId: string;
+  setSelectedPresetId: (id: string) => void;
 }
 
-export default function CollectionsView({ mods, toast, onRefresh }: Props) {
+export default function CollectionsView({ mods, toast, onRefresh, selectedPresetId, setSelectedPresetId }: Props) {
+  const { t } = useTranslation();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [newName, setNewName] = useState("");
   const [newNote, setNewNote] = useState("");
@@ -25,9 +29,9 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
   useEffect(() => { loadPresets(); }, []);
 
   const createPreset = async () => {
-    if (!newName.trim()) { toast("Enter a preset name", "error"); return; }
+    if (!newName.trim()) { toast(t('collections.enter_name_error'), "error"); return; }
     const enabledIds = mods.filter((m) => m.enabled).map((m) => m.id);
-    if (enabledIds.length === 0) { toast("No active mods to save", "error"); return; }
+    if (enabledIds.length === 0) { toast(t('collections.no_active_error'), "error"); return; }
     try {
       await invoke("create_preset", {
         name: newName.trim(),
@@ -37,30 +41,34 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
       setNewName("");
       setNewNote("");
       loadPresets();
-      toast(`Preset "${newName}" created with ${enabledIds.length} mods`, "success");
+      toast(t('collections.create_success', { name: newName, count: enabledIds.length }), "success");
     } catch (e: any) {
-      toast(e?.toString() || "Failed to create preset", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
   const applyPreset = async (preset: Preset) => {
     try {
       await invoke("apply_preset", { id: preset.id });
+      setSelectedPresetId(preset.id);
       onRefresh();
-      toast(`Applied preset "${preset.name}"`, "success");
+      toast(t('collections.apply_success', { name: preset.name }), "success");
     } catch (e: any) {
-      toast(e?.toString() || "Failed to apply preset", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
   const deletePreset = async (preset: Preset) => {
-    if (!confirm(`Delete preset "${preset.name}"?`)) return;
+    if (!confirm(t('collections.delete_confirm', { name: preset.name }))) return;
     try {
       await invoke("delete_preset", { id: preset.id });
+      if (selectedPresetId === preset.id) {
+        setSelectedPresetId("");
+      }
       loadPresets();
-      toast(`Deleted "${preset.name}"`, "info");
+      toast(t('collections.delete_success', { name: preset.name }), "info");
     } catch (e: any) {
-      toast(e?.toString() || "Failed to delete", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
@@ -69,9 +77,9 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
     try {
       await invoke("update_preset", { id: preset.id, modIds: enabledIds });
       loadPresets();
-      toast(`Updated "${preset.name}" with ${enabledIds.length} mods`, "success");
+      toast(t('collections.update_success', { name: preset.name, count: enabledIds.length }), "success");
     } catch (e: any) {
-      toast(e?.toString() || "Failed to update", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
@@ -79,13 +87,15 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
     month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 
+  const activeCount = mods.filter((m) => m.enabled).length;
+
   return (
     <div className="animate-fade-in p-8 overflow-y-auto" style={{ height: "100%" }}>
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Mod Presets</h1>
-        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Save and switch between different mod configurations</p>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('collections.title')}</h1>
+        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('collections.subtitle')}</p>
       </div>
 
       {/* Create new */}
@@ -95,9 +105,9 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
             💾
           </div>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Save Current Config</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('collections.save_current')}</h3>
             <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>
-              Save all <strong style={{ color: "var(--color-text)" }}>{mods.filter((m) => m.enabled).length}</strong> active mods as a preset
+              {t('collections.save_desc', { count: activeCount })}
             </div>
           </div>
         </div>
@@ -106,16 +116,16 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
           <div style={{ display: "flex", gap: 12 }}>
             <input
               className="input-field"
-              placeholder="Preset Name (e.g. 'Vanilla Expanded Run', 'Hardcore SK')"
+              placeholder={t('collections.preset_name_placeholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               style={{ flex: 1, fontSize: 14, padding: "12px 16px" }}
             />
-            <button className="btn-primary" onClick={createPreset} style={{ padding: "0 24px", fontSize: 14 }}>Save Preset</button>
+            <button className="btn-primary" onClick={createPreset} style={{ padding: "0 24px", fontSize: 14 }}>{t('collections.save_preset')}</button>
           </div>
           <input
             className="input-field"
-            placeholder="Notes (optional) — describe what this preset is for..."
+            placeholder={t('collections.notes_placeholder')}
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             style={{ fontSize: 13, background: "rgba(0,0,0,0.2)" }}
@@ -126,14 +136,14 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
       {/* Preset list */}
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>
-          Saved Presets ({presets.length})
+          {t('collections.saved_presets', { count: presets.length })}
         </h3>
         
         {presets.length === 0 ? (
           <div className="glass-card" style={{ textAlign: "center", padding: "80px 40px", borderStyle: "dashed" }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>📁</div>
-            <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>No Presets Yet</h3>
-            <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Save your current mod list above to create your first preset.</p>
+            <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>{t('collections.no_presets')}</h3>
+            <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('collections.no_presets_desc')}</p>
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
@@ -148,8 +158,13 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
                     <h4 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: "var(--color-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {preset.name}
                     </h4>
+                    {selectedPresetId === preset.id && (
+                      <span className="badge" style={{ background: "rgba(16, 185, 129, 0.1)", color: "var(--color-success)", borderColor: "rgba(16, 185, 129, 0.2)" }}>
+                        {t('common.active') || 'ACTIVE'}
+                      </span>
+                    )}
                     <span className="badge" style={{ background: "rgba(255, 157, 0, 0.1)", color: "var(--color-accent)", borderColor: "rgba(255, 157, 0, 0.2)" }}>
-                      {preset.mod_ids.length} Mods
+                      {t('collections.mods_count', { count: preset.mod_ids.length })}
                     </span>
                   </div>
                   
@@ -160,7 +175,7 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
                   )}
                   
                   <div style={{ fontSize: 11, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>
-                    Updated: {formatDate(preset.updated_at)}
+                    {t('collections.updated')}: {formatDate(preset.updated_at)}
                   </div>
                 </div>
                 
@@ -168,22 +183,22 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
                   <button 
                     className="btn-secondary" 
                     onClick={() => updatePreset(preset)}
-                    title="Overwrite with current active mods"
+                    title={t('collections.update_title')}
                   >
-                    🔄 Update
+                    🔄 {t('collections.update')}
                   </button>
                   <button 
                     className="btn-primary" 
                     onClick={() => applyPreset(preset)}
                     style={{ background: "linear-gradient(135deg, var(--color-success), #059669)", color: "white" }}
                   >
-                    ▶ Apply
+                    ▶ {t('collections.apply')}
                   </button>
                   <button 
                     className="btn-secondary" 
                     onClick={() => deletePreset(preset)}
                     style={{ padding: "8px 12px", color: "var(--color-danger)", borderColor: "rgba(239, 68, 68, 0.2)" }}
-                    title="Delete Preset"
+                    title={t('collections.delete_title')}
                   >
                     🗑
                   </button>

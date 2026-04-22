@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import type { ModInfo, SortPreview, LoadOrderAnalysis } from "../types";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
+  const { t } = useTranslation();
   const [preview, setPreview] = useState<SortPreview | null>(null);
   const [analysis, setAnalysis] = useState<LoadOrderAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,7 +35,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       const p = await invoke<SortPreview>("preview_auto_sort");
       setPreview(p);
     } catch (e: any) {
-      toast(e?.toString() || "Preview failed", "error");
+      toast(e?.toString() || t('common.error'), "error");
     } finally {
       setLoading(false);
     }
@@ -45,10 +47,10 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       onRefresh();
       setLocalOrder(null);
       setDirty(false);
-      toast("Load order applied!", "success");
+      toast(t('load_order.applied_success'), "success");
       setPreview(null);
     } catch (e: any) {
-      toast(e?.toString() || "Apply failed", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
@@ -58,7 +60,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       const a = await invoke<LoadOrderAnalysis>("analyze_load_order");
       setAnalysis(a);
     } catch (e: any) {
-      toast(e?.toString() || "Analysis failed", "error");
+      toast(e?.toString() || t('common.error'), "error");
     } finally {
       setLoading(false);
     }
@@ -67,12 +69,12 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
   const updateCommunityRules = async () => {
     try {
       setLoading(true);
-      toast("Downloading community rules...", "info");
+      toast(t('load_order.updating_rules'), "info");
       await invoke("update_community_rules");
-      toast("Community rules updated successfully!", "success");
+      toast(t('load_order.rules_updated'), "success");
       if (analysis) analyzeOrder();
     } catch (e: any) {
-      toast(e?.toString() || "Failed to update rules", "error");
+      toast(e?.toString() || t('common.error'), "error");
     } finally {
       setLoading(false);
     }
@@ -86,9 +88,9 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       onRefresh();
       setLocalOrder(null);
       setDirty(false);
-      toast("Load order saved!", "success");
+      toast(t('load_order.save_success'), "success");
     } catch (e: any) {
-      toast(e?.toString() || "Save failed", "error");
+      toast(e?.toString() || t('common.error'), "error");
     }
   };
 
@@ -151,12 +153,12 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       {/* Page Header */}
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Load Order</h1>
-          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Analyze, sort, and manage your mod load order</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('load_order.title')}</h1>
+          <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('load_order.subtitle')}</p>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{enabledMods.length}</div>
-          <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Active Mods</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t('load_order.active_mods')}</div>
         </div>
       </div>
 
@@ -166,7 +168,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
           <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: 0.5 }}>🔍</span>
           <input
             className="input-field"
-            placeholder="Search load order..."
+            placeholder={t('load_order.search_placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: "100%", paddingLeft: 40 }}
@@ -174,17 +176,17 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={analyzeOrder} disabled={loading} title="Check for missing dependencies and conflicts">
-            🔍 Analyze
+          <button className="btn-secondary" onClick={analyzeOrder} disabled={loading} title={t('load_order.analyze_desc')}>
+            🔍 {t('load_order.analyze')}
           </button>
-          <button className="btn-secondary" onClick={previewSort} disabled={loading} title="See what Auto-Sort would do without applying">
-            👁 Preview Sort
+          <button className="btn-secondary" onClick={previewSort} disabled={loading} title={t('load_order.preview_desc')}>
+            👁 {t('load_order.preview')}
           </button>
-          <button className="btn-secondary" onClick={updateCommunityRules} disabled={loading} title="Download latest RimPy community sorting rules">
-            🌐 Update Rules
+          <button className="btn-secondary" onClick={updateCommunityRules} disabled={loading} title={t('load_order.update_rules_desc')}>
+            🌐 {t('load_order.update_rules')}
           </button>
           <button className="btn-primary" onClick={applySort} disabled={loading}>
-            ⚡ Apply Auto-Sort
+            ⚡ {t('load_order.apply_auto')}
           </button>
         </div>
       </div>
@@ -202,13 +204,13 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 24 }}>⚠</span>
             <div>
-              <div style={{ fontWeight: 600, color: "var(--color-accent)", marginBottom: 2 }}>Unsaved Changes</div>
-              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>You have modified the load order manually.</div>
+              <div style={{ fontWeight: 600, color: "var(--color-accent)", marginBottom: 2 }}>{t('load_order.unsaved_changes')}</div>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('load_order.unsaved_desc')}</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-secondary" onClick={resetOrder}>↩ Discard</button>
-            <button className="btn-primary" onClick={saveManualOrder}>💾 Save Order</button>
+            <button className="btn-secondary" onClick={resetOrder}>{t('load_order.discard')}</button>
+            <button className="btn-primary" onClick={saveManualOrder}>{t('load_order.save_order')}</button>
           </div>
         </div>
       )}
@@ -217,7 +219,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       {analysis && analysis.issues.length > 0 && (
         <div className="glass-card" style={{ padding: 24, marginBottom: 24, borderLeft: "4px solid var(--color-warning)" }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 8 }}>
-            <span>⚠</span> {analysis.issues.length} Issue{analysis.issues.length > 1 ? "s" : ""} Found
+            <span>⚠</span> {t(analysis.issues.length > 1 ? 'load_order.issues_found_plural' : 'load_order.issues_found', { count: analysis.issues.length })}
           </h3>
           <div style={{ display: "grid", gap: 10 }}>
             {analysis.issues.slice(0, 15).map((issue, i) => (
@@ -234,25 +236,25 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
                 {issue.kind === "MissingDependency" && (
                   <>
                     <span className="badge danger">Missing</span>
-                    <span><strong>{issue.mod_name}</strong> requires <code style={{ color: "var(--color-accent)", background: "rgba(255,157,0,0.1)", padding: "2px 6px", borderRadius: 4 }}>{issue.missing}</code></span>
+                    <span><strong>{issue.mod_name}</strong> {t('load_order.requires')} <code style={{ color: "var(--color-accent)", background: "rgba(255,157,0,0.1)", padding: "2px 6px", borderRadius: 4 }}>{issue.missing}</code></span>
                   </>
                 )}
                 {issue.kind === "OutOfOrder" && (
                   <>
                     <span className="badge warning">Order</span>
-                    <span><strong>{issue.mod_name}</strong> is at pos <strong>{issue.current_index + 1}</strong>, should be at <strong>{issue.suggested_index + 1}</strong></span>
+                    <span><strong>{issue.mod_name}</strong> {t('load_order.pos_info', { current: issue.current_index + 1, suggested: issue.suggested_index + 1 })}</span>
                   </>
                 )}
                 {issue.kind === "Cycle" && (
                   <>
                     <span className="badge danger">Cycle</span>
-                    <span>Circular dependency: {issue.mod_names.join(" → ")}</span>
+                    <span>{t('load_order.circular')}: {issue.mod_names.join(" → ")}</span>
                   </>
                 )}
                 {issue.kind === "Incompatible" && (
                   <>
                     <span className="badge danger">Conflict</span>
-                    <span><strong>{issue.mod_name}</strong> is incompatible with <strong>{issue.conflicting_name}</strong></span>
+                    <span><strong>{issue.mod_name}</strong> {t('load_order.incompatible')} <strong>{issue.conflicting_name}</strong></span>
                   </>
                 )}
               </div>
@@ -270,8 +272,8 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
         <div className="glass-card" style={{ padding: "16px 24px", marginBottom: 24, borderLeft: "4px solid var(--color-success)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(16, 185, 129, 0.2)", color: "var(--color-success)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✓</div>
           <div>
-            <div style={{ fontWeight: 600, color: "var(--color-success)" }}>All Good!</div>
-            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>No load order issues detected.</div>
+            <div style={{ fontWeight: 600, color: "var(--color-success)" }}>{t('load_order.all_good')}</div>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('load_order.no_issues')}</div>
           </div>
         </div>
       )}
@@ -281,13 +283,13 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
         <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <span>👁</span> Sort Preview
+              <span>👁</span> {t('load_order.preview_title')}
             </h3>
-            <button className="btn-secondary" onClick={() => setPreview(null)}>✕ Close Preview</button>
+            <button className="btn-secondary" onClick={() => setPreview(null)}>✕ {t('load_order.close_preview')}</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: 16, border: "1px solid var(--color-border)" }}>
-              <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Current Order</div>
+              <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t('load_order.current_order')}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {preview.current.map((id, i) => (
                   <div key={id} style={{ fontSize: 13, padding: "6px 8px", background: "rgba(255,255,255,0.02)", borderRadius: 6, color: "var(--color-text-muted)" }}>
@@ -297,7 +299,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
               </div>
             </div>
             <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: 16, border: "1px solid var(--color-border)" }}>
-              <div style={{ fontSize: 12, color: "var(--color-accent)", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Suggested Order</div>
+              <div style={{ fontSize: 12, color: "var(--color-accent)", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t('load_order.suggested_order')}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {preview.suggested.map((id, i) => {
                   const moved = preview.current.indexOf(id) !== i;
@@ -326,8 +328,8 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
         {enabledMods.length === 0 ? (
           <div className="glass-card" style={{ textAlign: "center", padding: "60px 40px", borderStyle: "dashed" }}>
             <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.2 }}>📚</div>
-            <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>No Active Mods</h3>
-            <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Enable some mods in the Mods tab to arrange their load order.</p>
+            <h3 style={{ color: "var(--color-text-muted)", marginBottom: 8 }}>{t('load_order.no_active_mods')}</h3>
+            <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('load_order.no_active_desc')}</p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -382,7 +384,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
                     {mod.name}
                   </span>
                   <span style={{ color: "var(--color-text-dim)", fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {mod.author || "Unknown Author"} • {mod.id}
+                    {mod.author || t('common.unknown_author')} • {mod.id}
                   </span>
                 </div>
 
@@ -393,7 +395,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
                     onClick={() => moveUp(i)}
                     disabled={i === 0}
                     style={{ padding: "6px 10px", opacity: i === 0 ? 0.3 : 1 }}
-                    title="Move Up"
+                    title={t('load_order.move_up')}
                   >
                     ▲
                   </button>
@@ -402,7 +404,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
                     onClick={() => moveDown(i)}
                     disabled={i === enabledMods.length - 1}
                     style={{ padding: "6px 10px", opacity: i === enabledMods.length - 1 ? 0.3 : 1 }}
-                    title="Move Down"
+                    title={t('load_order.move_down')}
                   >
                     ▼
                   </button>

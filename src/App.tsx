@@ -85,6 +85,8 @@ export default function App() {
     return () => { unlisten.then((f) => f()); };
   }, [toast, refreshMods]);
 
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+
   const enabledCount = mods.filter((m) => m.enabled).length;
 
   if (loading) {
@@ -177,10 +179,26 @@ export default function App() {
               </div>
             )}
 
-            {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
+            {view === "mods" && (
+              <ModsView 
+                mods={mods} 
+                onRefresh={refreshMods} 
+                toast={toast} 
+                selectedPresetId={selectedPresetId}
+                setSelectedPresetId={setSelectedPresetId}
+              />
+            )}
             {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} />}
             {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
-            {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
+            {view === "collections" && (
+              <CollectionsView 
+                mods={mods} 
+                toast={toast} 
+                onRefresh={refreshMods} 
+                selectedPresetId={selectedPresetId}
+                setSelectedPresetId={setSelectedPresetId}
+              />
+            )}
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
             {view === "logs" && <LogsView />}

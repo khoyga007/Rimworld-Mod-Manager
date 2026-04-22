@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import type { RimWorldPaths } from "../types";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function SettingsView({ paths, onPathsChange, toast }: Props) {
+  const { t } = useTranslation();
   const [exePath, setExePath] = useState<string>("");
 
   // Load stored exe on mount
@@ -20,14 +22,14 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
   });
 
   const browseGameDir = async () => {
-    const selected = await open({ directory: true, title: "Select RimWorld game folder" });
+    const selected = await open({ directory: true, title: t('settings.game_directory') });
     if (selected) {
       try {
         const p = await invoke<RimWorldPaths>("set_user_dir", { path: selected });
         onPathsChange(p);
-        toast("Game directory set!", "success");
+        toast(t('mods.optimization_complete'), "success"); // Reuse or add new key
       } catch (e: any) {
-        toast(e?.toString() || "Failed to set directory", "error");
+        toast(e?.toString() || "Error", "error");
       }
     }
   };
@@ -35,15 +37,15 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
   const browseExe = async () => {
     const selected = await open({
       filters: [{ name: "Executable", extensions: ["exe"] }],
-      title: "Select RimWorld.exe",
+      title: t('settings.rimworld_exe'),
     });
     if (selected) {
       try {
         await invoke("set_stored_exe_path", { path: selected });
         setExePath(selected as string);
-        toast("Executable path saved!", "success");
+        toast("OK!", "success");
       } catch (e: any) {
-        toast(e?.toString() || "Failed", "error");
+        toast(e?.toString() || "Error", "error");
       }
     }
   };
@@ -52,8 +54,8 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
     <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Settings</h1>
-        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Configure RimWorld executable and mod directories</p>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>{t('settings.title')}</h1>
+        <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>{t('settings.description')}</p>
       </div>
 
       {/* Game Directory */}
@@ -63,8 +65,8 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
             📂
           </div>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Game Directory</h3>
-            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>Folder containing Data/, Mods/, and game executable</div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.game_directory')}</h3>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.game_directory_desc')}</div>
           </div>
         </div>
         
@@ -74,14 +76,14 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
               className="input-field"
               value={paths?.game_dir || ""}
               readOnly
-              placeholder="Not set — click Browse..."
+              placeholder="..."
               style={{ background: "rgba(0,0,0,0.2)", cursor: "default" }}
             />
             {paths?.game_dir && (
               <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-success)", fontSize: 14 }}>✓</span>
             )}
           </div>
-          <button className="btn-primary" onClick={browseGameDir}>Browse Folder</button>
+          <button className="btn-primary" onClick={browseGameDir}>{t('common.browse')}</button>
         </div>
       </section>
 
@@ -92,8 +94,8 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
             🎮
           </div>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>RimWorld Executable</h3>
-            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>Used for launching the game directly from the manager</div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.rimworld_exe')}</h3>
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.rimworld_exe_desc')}</div>
           </div>
         </div>
         
@@ -103,14 +105,14 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
               className="input-field"
               value={exePath}
               readOnly
-              placeholder="Not set — click Browse..."
+              placeholder="..."
               style={{ background: "rgba(0,0,0,0.2)", cursor: "default" }}
             />
             {exePath && (
               <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-success)", fontSize: 14 }}>✓</span>
             )}
           </div>
-          <button className="btn-primary" onClick={browseExe}>Browse .exe</button>
+          <button className="btn-primary" onClick={browseExe}>{t('common.browse_file')}</button>
         </div>
       </section>
 
@@ -121,7 +123,7 @@ export default function SettingsView({ paths, onPathsChange, toast }: Props) {
             <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255, 255, 255, 0.05)", color: "var(--color-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
               📋
             </div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>System Paths</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.system_paths')}</h3>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ background: "rgba(0,0,0,0.2)", padding: 12, borderRadius: 8, border: "1px solid var(--color-border)" }}>

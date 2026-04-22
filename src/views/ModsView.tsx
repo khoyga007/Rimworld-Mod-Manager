@@ -237,7 +237,19 @@ function VirtualRow({ index, style, data }: any) {
   );
 }
 
-export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], onRefresh: () => void, toast: (m: string, t?: string) => void }) {
+export default function ModsView({ 
+  mods, 
+  onRefresh, 
+  toast,
+  selectedPresetId,
+  setSelectedPresetId
+}: { 
+  mods: ModInfo[], 
+  onRefresh: () => void, 
+  toast: (m: string, t?: string) => void,
+  selectedPresetId: string,
+  setSelectedPresetId: (id: string) => void
+}) {
   const { t } = useTranslation();
   const [modSearchText, setModSearchText] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -253,7 +265,6 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
   const [modSizes, setModSizes] = useState<Record<string, { total: number, assets: number }>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
 
   const bumpImgVer = useCallback(() => setImgVer((v) => v + 1), []);
 
@@ -352,8 +363,19 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
     try {
       const ids = localActive.map(m => m.id);
       await invoke("set_load_order", { ids });
+      
+      // If a preset is selected, ask to update it too
+      if (selectedPresetId) {
+        const activePreset = presets.find(p => p.id === selectedPresetId);
+        if (activePreset && confirm(t('mods.update_preset_confirm', { name: activePreset.name }))) {
+          await invoke("update_preset", { id: selectedPresetId, modIds: ids });
+          toast(t('collections.update_success', { name: activePreset.name, count: ids.length }), "success");
+          loadPresets();
+        }
+      }
+
       setDirty(false);
-      toast("Load order saved!", "success");
+      toast(t('mods.save_success'), "success");
       onRefresh();
     } catch (e: any) {
       toast(e.toString(), "error");
@@ -480,7 +502,7 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
             }`}
           >
             <Save size={16} />
-            <span className="text-xs font-bold uppercase tracking-tighter">Save</span>
+            <span className="text-xs font-bold uppercase tracking-tighter">{t('common.save')}</span>
           </button>
 
           <div className="h-6 w-px bg-white/10 mx-2" />
@@ -501,7 +523,7 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
               }}
               className="bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-widest text-accent px-2 py-1 cursor-pointer"
             >
-              <option value="" className="bg-[#1a1b1e]">Select Profile</option>
+              <option value="" className="bg-[#1a1b1e]">{t('mods.select_profile')}</option>
               {presets.map(p => (
                 <option key={p.id} value={p.id} className="bg-[#1a1b1e]">{p.name}</option>
               ))}
@@ -509,7 +531,7 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
             
             <button 
               onClick={async () => {
-                const name = prompt("New profile name:");
+                const name = prompt(t('mods.new_profile_prompt'));
                 if (!name) return;
                 try {
                   await invoke("create_preset", { name, modIds: localActive.map(m => m.id) });
@@ -526,7 +548,7 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
             {selectedPresetId && (
               <button 
                 onClick={async () => {
-                  if (confirm("Delete this profile?")) {
+                  if (confirm(t('mods.delete_profile_confirm'))) {
                     try {
                       await invoke("delete_preset", { id: selectedPresetId });
                       setSelectedPresetId("");
@@ -550,14 +572,14 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
               onClick={analyzeAllSizes}
               disabled={analyzing}
               className="p-1.5 hover:bg-white/10 rounded-md text-muted-foreground transition-colors group relative"
-              title="Analyze Sizes"
+              title={t('mods.analyze_sizes')}
             >
               {analyzing ? <RefreshCw size={16} className="animate-spin text-accent" /> : <BarChart3 size={16} />}
             </button>
             <button 
               onClick={restoreSystem}
               className="p-1.5 hover:bg-white/10 rounded-md text-muted-foreground transition-colors group relative"
-              title="System Restore"
+              title={t('mods.system_restore')}
             >
               <LifeBuoy size={16} />
             </button>
@@ -588,10 +610,10 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
              <button 
               onClick={optimizeAll}
               className="p-1.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-all flex items-center gap-2"
-              title="Optimize Textures"
+              title={t('mods.optimize')}
             >
               <Scaling size={16} />
-              <span className="text-[10px] font-black uppercase">Optimize</span>
+              <span className="text-[10px] font-black uppercase">{t('mods.optimize')}</span>
             </button>
           </div>
         </div>
@@ -602,7 +624,7 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs transition-all shadow-lg shadow-emerald-900/20 active:scale-95 group"
           >
             <Play size={16} className="fill-current" />
-            <span>Launch Game</span>
+            <span>{t('mods.launch_game')}</span>
           </button>
 
           <div className="flex items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 transition-all w-64 shadow-inner">
@@ -700,9 +722,9 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
           <div className="flex-1 flex flex-col bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
             <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <h2 className="text-sm font-black uppercase tracking-widest text-white/40 flex items-center gap-2">
-                Inactive <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/60">{localInactive.length}</span>
+                {t('mods.inactive')} <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/60">{localInactive.length}</span>
               </h2>
-              <button onClick={enableAll} className="text-[9px] font-bold text-muted-foreground hover:text-white">ENABLE ALL</button>
+              <button onClick={enableAll} className="text-[9px] font-bold text-muted-foreground hover:text-white">{t('mods.enable_all')}</button>
             </div>
             <div className="flex-1 relative">
               <Droppable 
@@ -761,9 +783,9 @@ export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], 
           <div className="flex-1 flex flex-col bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
             <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <h2 className="text-sm font-black uppercase tracking-widest text-accent flex items-center gap-2">
-                Active <span className="text-[10px] bg-accent/20 px-1.5 py-0.5 rounded text-accent">{localActive.length}</span>
+                {t('mods.active')} <span className="text-[10px] bg-accent/20 px-1.5 py-0.5 rounded text-accent">{localActive.length}</span>
               </h2>
-              <button onClick={disableAll} className="text-[9px] font-bold text-muted-foreground hover:text-red-400">DISABLE ALL</button>
+              <button onClick={disableAll} className="text-[9px] font-bold text-muted-foreground hover:text-red-400">{t('mods.disable_all')}</button>
             </div>
             <div className="flex-1 relative">
               <Droppable 
