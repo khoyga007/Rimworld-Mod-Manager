@@ -2,11 +2,11 @@
 
 A high-performance, professional-grade mod manager for RimWorld. Engineered with **Rust** and **Tauri** for maximum safety, reliability, and speed. Works seamlessly with both Steam and offline/non-Steam builds.
 
-![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri) ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react) ![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) ![Performance](https://img.shields.io/badge/Performance-Ultra--Fast-success)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react) ![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) ![Performance](https://img.shields.io/badge/Performance-Ultra--Fast-success)
 
 ---
 
-## ⚡ Key Highlights (v0.2.x)
+## ⚡ Key Highlights (v0.5.x)
 
 - **GPU Accelerated Texture Optimization**: Convert PNGs to high-quality DDS using `texconv` with hardware acceleration. Transform compression time from **hours to seconds**.
 - **Smart VRAM Analysis**: Instantly identify "heavy" mods with high texture density. Highlights mods consuming >100MB of VRAM to help prioritize optimization.
