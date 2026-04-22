@@ -276,10 +276,23 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
 
     let mut remote_file_id = d.published_file_id;
     
-    // If it's in workshop folder and ID is a number, that's our remote ID
-    if remote_file_id.is_none() && source == ModSource::Workshop {
-        if id.chars().all(|c| c.is_ascii_digit()) {
-            remote_file_id = Some(id.clone());
+    // 1. If folder name is numeric, that's likely our Workshop ID (very common in manual installs)
+    if remote_file_id.is_none() {
+        if fallback_name.chars().all(|c| c.is_ascii_digit()) {
+            remote_file_id = Some(fallback_name.to_string());
+        }
+    }
+
+    // 2. Check for PublishedFileId.txt (Steam-created metadata)
+    if remote_file_id.is_none() {
+        let pub_id_file = mod_path.join("PublishedFileId.txt");
+        if pub_id_file.exists() {
+            if let Ok(content) = fs::read_to_string(pub_id_file) {
+                let cleaned = content.trim();
+                if !cleaned.is_empty() && cleaned.chars().all(|c| c.is_ascii_digit()) {
+                    remote_file_id = Some(cleaned.to_string());
+                }
+            }
         }
     }
 
