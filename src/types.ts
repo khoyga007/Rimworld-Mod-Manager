@@ -12,6 +12,8 @@ export interface ModInfo {
   dependencies: string[];
   load_after: string[];
   load_before: string[];
+  incompatible_with: string[];
+  missing_dependencies: string[];
   picture?: string;
   path: string;
   descriptor_path: string;

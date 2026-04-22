@@ -27,13 +27,18 @@ interface HubManifest {
   providers: Record<string, Record<string, HubProvider>>;
 }
 
-export const ModHubView: React.FC = () => {
+interface Props {
+  toast: (msg: string, type?: string) => void;
+}
+
+export const ModHubView: React.FC<Props> = ({ toast }) => {
   const [manifest, setManifest] = useState<HubManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [missingDeps, setMissingDeps] = useState<{mod: string, missing: string[]} | null>(null);
 
   const fetchHub = async () => {
     setLoading(true);
@@ -55,10 +60,17 @@ export const ModHubView: React.FC = () => {
   const handleInstall = async (provider: HubProvider) => {
     setInstalling(provider.name);
     try {
-      await invoke('install_hub_mod', { provider });
+      const missing = await invoke<string[]>('install_hub_mod', { provider });
       setInstalled(prev => new Set(prev).add(provider.name));
+      
+      if (missing.length > 0) {
+        setMissingDeps({ mod: provider.display_name || provider.name, missing });
+        toast(`Installed ${provider.name}, but it's missing dependencies!`, "warning");
+      } else {
+        toast(`Successfully installed ${provider.name}`, "success");
+      }
     } catch (err: any) {
-      alert(`Failed to install: ${err}`);
+      toast(`Failed to install: ${err}`, "error");
     } finally {
       setInstalling(null);
     }
@@ -230,6 +242,50 @@ export const ModHubView: React.FC = () => {
           );
         })}
       </div>
+      
+      {/* Dependency Warning Modal */}
+      {missingDeps && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="glass-card max-w-md w-full p-8 border-red-500/30 shadow-[0_0_50px_rgba(239,68,68,0.2)] animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <LifeBuoy className="w-10 h-10 text-red-500 animate-bounce" />
+            </div>
+            <h3 className="text-2xl font-black text-center text-white mb-2 uppercase tracking-tighter">Dependency Guard</h3>
+            <p className="text-gray-400 text-center text-sm mb-6">
+              <span className="text-white font-bold">{missingDeps.mod}</span> đã được cài đặt, nhưng nó sẽ <span className="text-red-400 font-bold">không chạy được</span> vì thiếu các Mod nền sau:
+            </p>
+            
+            <div className="bg-black/40 rounded-xl p-4 border border-white/5 mb-8">
+              <ul className="space-y-2">
+                {missingDeps.missing.map(dep => (
+                  <li key={dep} className="flex items-center gap-2 text-red-300 font-mono text-xs">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                    {dep}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => setMissingDeps(null)}
+                className="py-3 px-4 bg-white/5 hover:bg-white/10 text-gray-400 font-bold rounded-xl transition-all uppercase text-xs tracking-widest"
+              >
+                Để sau
+              </button>
+              <button 
+                onClick={() => {
+                  setSearchQuery(missingDeps.missing[0]);
+                  setMissingDeps(null);
+                }}
+                className="py-3 px-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all uppercase text-xs tracking-widest"
+              >
+                Tìm Mod Nền
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer Info */}
       <div className="p-4 bg-black/40 border-t border-white/5 flex items-center justify-between text-xs text-gray-500">

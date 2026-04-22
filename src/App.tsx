@@ -197,7 +197,7 @@ export default function App() {
             )}
 
             {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
-            {view === "hub" && <ModHubView />}
+            {view === "hub" && <ModHubView toast={toast} />}
             {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
             {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}

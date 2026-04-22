@@ -589,6 +589,29 @@ const ModCard = memo(({ mod, index, modSizes, formatSize, onRefresh, isActive }:
             </div>
           </div>
 
+          {/* Dependency Guard Alert */}
+          {mod.missing_dependencies?.length > 0 && (
+             <div className="mx-1 mt-1 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2">
+               <div className="w-6 h-6 rounded bg-red-500/20 flex items-center justify-center shrink-0">
+                 <LifeBuoy size={14} className="text-red-400 animate-pulse" />
+               </div>
+               <div className="flex-1 min-w-0">
+                 <div className="text-[10px] font-black text-red-400 uppercase tracking-tighter flex items-center gap-1.5">
+                   Dependency Guard <span className="w-1 h-1 rounded-full bg-red-500 animate-ping"></span>
+                 </div>
+                 <div className="text-[11px] text-red-300/90 leading-snug font-medium">
+                   Missing: <span className="text-white font-bold">{mod.missing_dependencies.join(", ")}</span>
+                 </div>
+                 <button 
+                  onClick={() => { /* Potential future: Jump to Mod Hub search */ }}
+                  className="mt-1 text-[9px] font-bold text-red-400/60 hover:text-red-400 uppercase tracking-widest transition-colors"
+                 >
+                   Find on Mod Hub →
+                 </button>
+               </div>
+             </div>
+          )}
+
           {editingNote && (
              <div className="px-1 animate-in fade-in slide-in-from-top-1">
                <input 

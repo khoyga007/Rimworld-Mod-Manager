@@ -975,7 +975,7 @@ async fn fetch_mod_hub() -> Result<HubManifest, String> {
 }
 
 #[tauri::command]
-async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<(), String> {
+async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<Vec<String>, String> {
     let p = state.paths.lock().unwrap().clone();
     
     // We'll use ZIP download as a simple alternative to Git cloning
@@ -1019,8 +1019,8 @@ async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> R
 
     // Install using existing logic
     mods::install_from_folder(&p, &mod_folder, &provider.name, &about::ModAbout {
-        name: provider.display_name.unwrap_or(provider.name.clone()),
-        author: provider.authors.map(|a| a.join(", ")).unwrap_or_default(),
+        name: provider.display_name.clone().unwrap_or(provider.name.clone()),
+        author: provider.authors.as_ref().map(|a| a.join(", ")).unwrap_or_default(),
         ..Default::default()
     }).map_err(|e| e.to_string())?;
 
@@ -1028,7 +1028,21 @@ async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> R
     let _ = fs::remove_dir_all(&temp_dir);
     mods::clear_cache();
     
-    Ok(())
+    // Final check for missing dependencies of this specific mod
+    let all_mods = mods::list(&p).map_err(|e| e.to_string())?;
+    let mut target_mod = None;
+    for m in all_mods {
+        if m.name == provider.name || provider.display_name.as_ref().map_or(false, |dn| m.name == *dn) {
+            target_mod = Some(m);
+            break;
+        }
+    }
+    
+    if let Some(m) = target_mod {
+        Ok(m.missing_dependencies)
+    } else {
+        Ok(vec![])
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

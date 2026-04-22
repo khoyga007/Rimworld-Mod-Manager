@@ -40,6 +40,7 @@ pub struct ModInfo {
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
     pub incompatible_with: Vec<String>,
+    pub missing_dependencies: Vec<String>,
     pub picture: Option<String>,
     pub path: String,
     pub descriptor_path: String,
@@ -327,6 +328,18 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
         }
     }
 
+    // Dependency Guard: Check for missing dependencies
+    let all_package_ids: std::collections::HashSet<String> = out.iter().map(|m| m.id.to_lowercase()).collect();
+    for m in out.iter_mut() {
+        let mut missing = Vec::new();
+        for dep in &m.dependencies {
+            if !all_package_ids.contains(&dep.to_lowercase()) {
+                missing.push(dep.clone());
+            }
+        }
+        m.missing_dependencies = missing;
+    }
+
     out.sort_by_key(|m| m.load_order);
 
     if metadata_changed {
@@ -432,6 +445,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         custom_note: String::new(),
         workshop_name: None,
         created_at: 0,
+        missing_dependencies: vec![],
     })
 }
 
