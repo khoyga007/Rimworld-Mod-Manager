@@ -1,11 +1,11 @@
 // v1.0.2 - Unified Search & RimPy Action Bar
-import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { memo, useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided, DraggableStateSnapshot } from "@hello-pangea/dnd";
+import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided } from "@hello-pangea/dnd";
 import { FixedSizeList as List } from "react-window";
 
-import { Search, RotateCw, RefreshCw, RotateCcw, Zap, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, BarChart2, ChevronRight, ChevronLeft, Tag, Plus, X, StickyNote, Globe, Activity, Play } from "lucide-react";
+import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play } from "lucide-react";
 import type { ModInfo, Preset } from "../types";
 
 // Global image cache
@@ -41,7 +41,6 @@ const ModCard = memo(({
   isActive, 
   provided,
   isDragging,
-  modSizes, 
   formatSize, 
   onRefresh, 
   toast,
@@ -52,7 +51,6 @@ const ModCard = memo(({
   isActive?: boolean, 
   provided?: DraggableProvided,
   isDragging?: boolean,
-  modSizes: any, 
   formatSize: any, 
   onRefresh: any, 
   toast: (msg: string, type?: string) => void,
@@ -227,7 +225,6 @@ function VirtualRow({ index, style, data }: any) {
             isActive={data.isActive}
             provided={provided}
             isDragging={snapshot.isDragging}
-            modSizes={data.modSizes}
             formatSize={data.formatSize}
             onRefresh={data.onRefresh}
             toast={data.toast}
@@ -721,7 +718,6 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
                     index={rubric.source.index}
                     provided={provided}
                     isDragging={snapshot.isDragging}
-                    modSizes={modSizes}
                     formatSize={formatSize}
                     onRefresh={onRefresh}
                     toast={toast}
@@ -784,7 +780,6 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
                     provided={provided}
                     isDragging={snapshot.isDragging}
                     isActive
-                    modSizes={modSizes}
                     formatSize={formatSize}
                     onRefresh={onRefresh}
                     toast={toast}

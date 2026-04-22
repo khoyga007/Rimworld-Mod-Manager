@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   LifeBuoy
 } from 'lucide-react';
+import type { ModInfo } from '../types';
 
 interface HubProvider {
   name: string;
