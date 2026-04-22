@@ -49,8 +49,13 @@ Grab the latest release from the [**GitHub Releases**](https://github.com/khoyga
 
 ---
 
-## 🛠️ Development
+## 🛠️ Development (Quick Start)
 
+The easiest way to get started is to use our **Quick Start helper**:
+1. **Clone** the repository.
+2. **Run `QuickStart.bat`**. It will automatically check for Node.js/Rust, install dependencies, and launch the app in dev mode.
+
+Alternatively, via CLI:
 ```bash
 # Prerequisites: Node 20+, Rust stable
 git clone https://github.com/khoyga007/Rimworld-Mod-Manager.git
@@ -75,6 +80,12 @@ Trình quản lý Mod chuyên nghiệp, hiệu năng cao dành cho RimWorld. Đ�
 
 ### 🚀 Tải về
 Vào trang [**Releases**](https://github.com/khoyga007/Rimworld-Mod-Manager/releases/latest) và tải file `.exe` mới nhất để sử dụng ngay.
+
+## 🛠️ Dành cho Developer (Chạy bản nguồn)
+
+Cách nhanh nhất để chạy bản nguồn là dùng file hỗ trợ cài đặt tự động:
+1. **Clone** repository về máy.
+2. **Chạy file `QuickStart.bat`**. Nó sẽ tự kiểm tra môi trường (Node.js, Rust), cài thư viện và khởi động app cho bạn.
 
 ---
 
