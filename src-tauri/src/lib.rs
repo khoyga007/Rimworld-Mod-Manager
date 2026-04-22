@@ -875,29 +875,28 @@ async fn restore_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState
 
     emit_progress(&app, 1, "Initializing restore...");
 
-    tauri::async_runtime::spawn(async move {
-        let res = steamcmd::restore_local_mods_logic(app_h.clone(), p, |pct, msg| {
-            emit_progress(&app_h, pct, msg);
-        }).await;
+    let res = steamcmd::restore_local_mods_logic(app_h.clone(), p, |pct, msg| {
+        emit_progress(&app_h, pct, msg);
+    }).await;
 
-        match res {
-            Ok(_) => {
-                emit_progress(&app_h, 100, "Restore complete!");
-            }
-            Err(e) => {
-                let _ = app_h.emit("download-progress", DownloadProgress {
-                    workshop_id: "system_restore".to_string(),
-                    status: "error".to_string(),
-                    progress: 0,
-                    message: format!("Restore failed: {}", e),
-                    title: Some("System Restore".into()),
-                    preview_url: None,
-                });
-            }
+    match res {
+        Ok(_) => {
+            emit_progress(&app_h, 100, "Restore complete!");
+            Ok(())
         }
-    });
-
-    Ok(())
+        Err(e) => {
+            let msg = format!("Restore failed: {}", e);
+            let _ = app_h.emit("download-progress", DownloadProgress {
+                workshop_id: "system_restore".to_string(),
+                status: "error".to_string(),
+                progress: 0,
+                message: msg.clone(),
+                title: Some("System Restore".into()),
+                preview_url: None,
+            });
+            Err(msg)
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
