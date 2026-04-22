@@ -859,6 +859,9 @@ fn read_mod_image(path: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn restore_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // 1. Try to acquire the lock. If failed, it means another operation (download/restore) is running.
+    let _guard = DOWNLOAD_LOCK.try_lock().map_err(|_| "A download or restore operation is already in progress. Please wait until it finishes.".to_string())?;
+
     let p = state.paths.lock().unwrap().clone();
     let app_h = app.clone();
     
