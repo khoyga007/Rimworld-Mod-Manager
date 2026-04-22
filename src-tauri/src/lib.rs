@@ -815,8 +815,15 @@ async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<updates::Up
 
 // ---------- Collections / Presets ----------
 #[tauri::command]
-fn list_presets() -> Result<Vec<collections::Preset>, String> {
+fn list_presets(_state: State<AppState>) -> Result<Vec<collections::Preset>, String> {
     Ok(collections::load().presets)
+}
+
+#[tauri::command]
+fn refresh_mods(state: State<AppState>) -> Result<Vec<mods::ModInfo>, String> {
+    mods::clear_cache();
+    let p = state.paths.lock().unwrap().clone();
+    mods::list(&p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -975,7 +982,7 @@ async fn fetch_mod_hub() -> Result<HubManifest, String> {
 }
 
 #[tauri::command]
-async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<Vec<String>, String> {
+async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> Result<Vec<crate::about::Dependency>, String> {
     let p = state.paths.lock().unwrap().clone();
     
     // We'll use ZIP download as a simple alternative to Git cloning
@@ -1103,6 +1110,7 @@ pub fn run() {
             update_preset,
             delete_preset,
             apply_preset,
+            refresh_mods,
             fetch_workshop_metas,
             list_save_games,
             analyze_save_game,

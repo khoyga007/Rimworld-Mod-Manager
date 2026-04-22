@@ -185,7 +185,7 @@ pub fn sort_mods(mods: &[ModInfo]) -> Vec<String> {
             if let Some(r_lb) = &rule.load_before { lb.extend(r_lb.keys().cloned()); }
         }
 
-        for dep in m.dependencies.iter().chain(la.iter()) {
+        for dep in m.dependencies.iter().map(|d| &d.package_id).chain(la.iter()) {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {
@@ -313,14 +313,15 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
     let rimpy = load_rimpy_rules();
 
     for m in &enabled {
-        for dep in &m.dependencies {
+        for dep_obj in &m.dependencies {
+            let dep = &dep_obj.package_id;
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if !id_lookup.contains_key(&dep_key) && !id_lookup.contains_key(&norm_key) {
                 issues.push(LoadOrderIssue::MissingDependency {
                     mod_id: m.id.clone(),
                     mod_name: m.name.clone(),
-                    missing: dep.clone(),
+                    missing: dep_obj.display_name.clone().unwrap_or_else(|| dep.clone()),
                 });
             }
         }
@@ -361,7 +362,7 @@ pub fn analyze(mods: &[ModInfo]) -> LoadOrderAnalysis {
             if let Some(r_lb) = &rule.load_before { lb.extend(r_lb.keys().cloned()); }
         }
 
-        for dep in m.dependencies.iter().chain(la.iter()) {
+        for dep in m.dependencies.iter().map(|d| &d.package_id).chain(la.iter()) {
             let dep_key = dep.to_lowercase();
             let norm_key = normalize_name(dep);
             if let Some(dep_id) = id_lookup.get(&dep_key).or_else(|| id_lookup.get(&norm_key)) {

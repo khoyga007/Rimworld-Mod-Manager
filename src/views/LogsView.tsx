@@ -93,9 +93,9 @@ export default function LogsView() {
   ];
 
   return (
-    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="animate-fade-in p-8" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Game Logs</h1>
           <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Real-time terminal output and error analysis</p>

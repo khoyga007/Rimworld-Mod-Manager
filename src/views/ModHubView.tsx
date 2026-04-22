@@ -9,7 +9,8 @@ import {
   AlertCircle,
   Package,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  LifeBuoy
 } from 'lucide-react';
 
 interface HubProvider {
@@ -27,18 +28,21 @@ interface HubManifest {
   providers: Record<string, Record<string, HubProvider>>;
 }
 
+import { Dependency } from '../types';
+
 interface Props {
+  installedMods: ModInfo[];
+  onRefresh: () => void;
   toast: (msg: string, type?: string) => void;
 }
 
-export const ModHubView: React.FC<Props> = ({ toast }) => {
+export const ModHubView: React.FC<Props> = ({ installedMods, onRefresh, toast }) => {
   const [manifest, setManifest] = useState<HubManifest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
-  const [installed, setInstalled] = useState<Set<string>>(new Set());
-  const [missingDeps, setMissingDeps] = useState<{mod: string, missing: string[]} | null>(null);
+  const [missingDeps, setMissingDeps] = useState<{mod: string, missing: Dependency[]} | null>(null);
 
   const fetchHub = async () => {
     setLoading(true);
@@ -60,8 +64,8 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
   const handleInstall = async (provider: HubProvider) => {
     setInstalling(provider.name);
     try {
-      const missing = await invoke<string[]>('install_hub_mod', { provider });
-      setInstalled(prev => new Set(prev).add(provider.name));
+      const missing = await invoke<Dependency[]>('install_hub_mod', { provider });
+      await onRefresh();
       
       if (missing.length > 0) {
         setMissingDeps({ mod: provider.display_name || provider.name, missing });
@@ -117,7 +121,7 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
   return (
     <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 bg-gray-900/50 border-b border-white/10">
+      <div className="flex items-center justify-between px-8 py-6 bg-gray-900/50 border-b border-white/10">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Sparkles className="text-pink-400" />
@@ -151,7 +155,7 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-10 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
         {categories.map(category => {
           const mods = filteredMods(category);
           if (mods.length === 0) return null;
@@ -205,7 +209,19 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
                           </span>
                         </div>
 
-                        {installed.has(mod.name) ? (
+                        {installedMods.some(m => {
+                          const normalize = (s: string) => s.toLowerCase().replace(/[-_\s]/g, '');
+                          const hubName = normalize(mod.name);
+                          const hubDisplay = mod.display_name ? normalize(mod.display_name) : hubName;
+                          
+                          const mName = normalize(m.name);
+                          const mId = normalize(m.id);
+                          const mPath = m.path.toLowerCase();
+
+                          return mName === hubName || mName === hubDisplay || 
+                                 mId === hubName || mId === hubDisplay ||
+                                 mPath.includes(mod.name.toLowerCase());
+                        }) ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-sm">
                             <CheckCircle2 className="w-4 h-4" />
                             Đã cài
@@ -258,9 +274,9 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
             <div className="bg-black/40 rounded-xl p-4 border border-white/5 mb-8">
               <ul className="space-y-2">
                 {missingDeps.missing.map(dep => (
-                  <li key={dep} className="flex items-center gap-2 text-red-300 font-mono text-xs">
+                  <li key={dep.package_id} className="flex items-center gap-2 text-red-300 font-mono text-xs">
                     <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                    {dep}
+                    {dep.display_name || dep.package_id}
                   </li>
                 ))}
               </ul>
@@ -275,7 +291,8 @@ export const ModHubView: React.FC<Props> = ({ toast }) => {
               </button>
               <button 
                 onClick={() => {
-                  setSearchQuery(missingDeps.missing[0]);
+                  const first = missingDeps.missing[0];
+                  setSearchQuery(first.display_name || first.package_id);
                   setMissingDeps(null);
                 }}
                 className="py-3 px-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all uppercase text-xs tracking-widest"

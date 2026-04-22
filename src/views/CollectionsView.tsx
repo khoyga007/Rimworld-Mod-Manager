@@ -80,7 +80,8 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
   });
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 800, margin: "0 auto" }}>
+    <div className="animate-fade-in p-8 overflow-y-auto" style={{ height: "100%" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Mod Presets</h1>
@@ -191,6 +192,7 @@ export default function CollectionsView({ mods, toast, onRefresh }: Props) {
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

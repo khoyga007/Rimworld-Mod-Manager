@@ -36,11 +36,11 @@ pub struct ModInfo {
     pub version: Option<String>,
     pub supported_version: Option<String>,
     pub tags: Vec<String>,
-    pub dependencies: Vec<String>,
+    pub dependencies: Vec<crate::about::Dependency>,
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
     pub incompatible_with: Vec<String>,
-    pub missing_dependencies: Vec<String>,
+    pub missing_dependencies: Vec<crate::about::Dependency>,
     pub picture: Option<String>,
     pub path: String,
     pub descriptor_path: String,
@@ -55,13 +55,25 @@ pub struct ModInfo {
     pub created_at: u64,
 }
 
-// Custom Metadata Storage (Tags + Notes + Workshop Names)
+// Custom Metadata Storage (Tags + Notes + Workshop Names + Performance Cache)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CustomMetadata {
     pub tags: Vec<String>,
     pub note: String,
     pub workshop_name: Option<String>,
     pub first_seen_at: Option<u64>,
+    pub cached_size: Option<u64>,
+    pub last_modified: Option<u64>,
+    // Persistent cache of slow-to-parse XML data
+    pub cached_name: Option<String>,
+    pub cached_author: Option<String>,
+    pub cached_package_id: Option<String>,
+    pub cached_supported_versions: Option<Vec<String>>,
+    pub cached_dependencies: Option<Vec<crate::about::Dependency>>,
+    pub cached_load_after: Option<Vec<String>>,
+    pub cached_load_before: Option<Vec<String>>,
+    pub cached_incompatible_with: Option<Vec<String>>,
+    pub cached_published_file_id: Option<String>,
 }
 
 type CustomMetadataMap = std::collections::HashMap<String, CustomMetadata>;
@@ -81,7 +93,8 @@ fn read_custom_metadata(paths: &RimWorldPaths) -> CustomMetadataMap {
                 tags, 
                 note: String::new(), 
                 workshop_name: None, 
-                first_seen_at: Some(1), // Migrated mods are old
+                first_seen_at: Some(1), 
+                ..Default::default()
             });
         }
         let _ = fs::remove_file(old_p); // Clean up
@@ -96,6 +109,7 @@ fn write_custom_metadata(paths: &RimWorldPaths, metadata: &CustomMetadataMap) ->
     fs::write(p, txt)?;
     Ok(())
 }
+
 
 pub fn set_mod_tags(paths: &RimWorldPaths, id: &str, tags: Vec<String>) -> Result<()> {
     let mut map = read_custom_metadata(paths);
@@ -220,9 +234,14 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
             return Ok(cached_mods.clone());
         }
     }
+    
+    // Store paths for thumbnailer
+    {
+        let mut gp = GLOBAL_PATHS.lock().unwrap();
+        *gp = Some(paths.clone());
+    }
 
     let mut metadata = read_custom_metadata(paths);
-    let mut metadata_changed = false;
     let mut dirs_to_scan = Vec::new();
     
     if let Some(gd) = &paths.game_dir {
@@ -240,74 +259,112 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
             eprintln!("[RIMPRO] Found Mods/ dir");
             dirs_to_scan.push((mods_dir, ModSource::Local)); 
         }
-        let lnd_dir = game_path.join("LinkNeverDie.Com-GSE").join("mods");
-        if lnd_dir.exists() { dirs_to_scan.push((lnd_dir, ModSource::Other)); }
-        let sw_dir = game_path.join("SW_mod");
-        if sw_dir.exists() { dirs_to_scan.push((sw_dir, ModSource::Other)); }
-    } else {
-        eprintln!("[RIMPRO] WARNING: game_dir is None! No mods will be scanned.");
+        let local_mods = PathBuf::from(gd).join("Mods");
+        if local_mods.exists() {
+            dirs_to_scan.push((local_mods, ModSource::Local));
+        }
     }
     
     // Fallback steam workshop path
     let steam_workshop = PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\294100");
     if steam_workshop.exists() {
-        eprintln!("[RIMPRO] Found Steam Workshop dir");
         dirs_to_scan.push((steam_workshop, ModSource::Workshop));
     }
 
-    eprintln!("[RIMPRO] Total directories to scan: {}", dirs_to_scan.len());
-
     let config = read_mods_config(Path::new(&paths.mods_config_path)).unwrap_or_default();
-
-    let mut out: Vec<ModInfo> = Vec::new();
-    let mut seen_ids = std::collections::HashSet::new();
     
-    for (dir, source) in dirs_to_scan {
-        let mut count = 0;
-        if let Ok(entries) = fs::read_dir(&dir) {
+    // Collect all mod candidate paths first
+    let mut candidates = vec![];
+    for (dir, source) in &dirs_to_scan {
+        if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let mod_path = entry.path();
                 if mod_path.is_dir() {
                     let about_file = mod_path.join("About").join("About.xml");
                     if about_file.exists() {
-                        match load_mod(&about_file, &mod_path, &config, source.clone()) {
-                            Ok(mut info) => {
-                                if seen_ids.insert(info.id.clone()) {
-                                    if let Some(m) = metadata.get_mut(&info.id) {
-                                        if m.first_seen_at.is_none() {
-                                            m.first_seen_at = Some(1); // Existing mod, mark as old
-                                            metadata_changed = true;
-                                        }
-                                        info.custom_tags = m.tags.clone();
-                                        info.custom_note = m.note.clone();
-                                        info.workshop_name = m.workshop_name.clone();
-                                        info.created_at = m.first_seen_at.unwrap_or(0);
-                                    } else {
-                                        // New mod entirely
-                                        let now = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_secs();
-                                        metadata.insert(info.id.clone(), CustomMetadata {
-                                            first_seen_at: Some(now),
-                                            ..Default::default()
-                                        });
-                                        info.created_at = now;
-                                        metadata_changed = true;
-                                    }
-                                    out.push(info);
-                                    count += 1;
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("[RIMPRO] Failed to load mod at {:?}: {}", mod_path, e);
-                            }
-                        }
+                        let m_time = fs::metadata(&mod_path).and_then(|m| m.modified()).ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs());
+                        candidates.push((about_file, mod_path, source.clone(), m_time));
                     }
                 }
             }
         }
-        eprintln!("[RIMPRO] Scanned {:?} → {} mods found", dir, count);
+    }
+
+    use rayon::prelude::*;
+    let mut metadata_changed = false;
+
+    // Parallel scan with cache check
+    let results: Vec<ModInfo> = candidates.into_par_iter().map(|(about_file, mod_path, source, m_time)| {
+        // Try to get from metadata cache first
+        // Note: We read metadata map multiple times here but it's small/fast compared to XML parse
+        // Actually, for extreme speed, we should pass the map into the par_iter
+        // but since we need to mutate it later, we do a simple check
+        load_mod_smart(&about_file, &mod_path, &config, source, m_time, &metadata)
+    }).filter_map(|r| r.ok()).collect();
+
+    let mut out = results;
+    let mut seen_ids = std::collections::HashSet::new();
+    out.retain(|m| seen_ids.insert(m.id.clone()));
+
+    // Merge metadata and calculate sizes efficiently
+    for info in out.iter_mut() {
+        let m_time = fs::metadata(&info.path).and_then(|m| m.modified()).ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+
+        if let Some(m) = metadata.get_mut(&info.id) {
+            if m.first_seen_at.is_none() {
+                m.first_seen_at = Some(1);
+                metadata_changed = true;
+            }
+            
+            // Sync the permanent cache back into metadata if it was a fresh scan
+            if m.last_modified != m_time {
+                m.cached_name = Some(info.name.clone());
+                m.cached_author = Some(info.author.clone());
+                m.cached_package_id = Some(info.id.clone());
+                m.cached_supported_versions = Some(info.supported_version.as_ref().map(|s| s.split(", ").map(|v| v.to_string()).collect()).unwrap_or_default());
+                m.cached_dependencies = Some(info.dependencies.clone());
+                m.cached_load_after = Some(info.load_after.clone());
+                m.cached_load_before = Some(info.load_before.clone());
+                m.cached_incompatible_with = Some(info.incompatible_with.clone());
+                m.cached_published_file_id = info.remote_file_id.clone();
+                
+                // Performance trick: Cache dir size
+                m.cached_size = Some(dir_size(Path::new(&info.path)));
+                m.last_modified = m_time;
+                metadata_changed = true;
+            }
+
+            info.size_bytes = m.cached_size.unwrap_or(0);
+            info.custom_tags = m.tags.clone();
+            info.custom_note = m.note.clone();
+            info.workshop_name = m.workshop_name.clone();
+            info.created_at = m.first_seen_at.unwrap_or(0);
+        } else {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            let size = dir_size(Path::new(&info.path));
+            metadata.insert(info.id.clone(), CustomMetadata {
+                first_seen_at: Some(now),
+                cached_size: Some(size),
+                last_modified: m_time,
+                cached_name: Some(info.name.clone()),
+                cached_author: Some(info.author.clone()),
+                cached_package_id: Some(info.id.clone()),
+                cached_supported_versions: Some(info.supported_version.as_ref().map(|s| s.split(", ").map(|v| v.to_string()).collect()).unwrap_or_default()),
+                cached_dependencies: Some(info.dependencies.clone()),
+                cached_load_after: Some(info.load_after.clone()),
+                cached_load_before: Some(info.load_before.clone()),
+                cached_incompatible_with: Some(info.incompatible_with.clone()),
+                cached_published_file_id: info.remote_file_id.clone(),
+                ..Default::default()
+            });
+            info.size_bytes = size;
+            info.created_at = now;
+            metadata_changed = true;
+        }
     }
 
     // Set load orders (case-insensitive match)
@@ -333,7 +390,7 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
     for m in out.iter_mut() {
         let mut missing = Vec::new();
         for dep in &m.dependencies {
-            if !all_package_ids.contains(&dep.to_lowercase()) {
+            if !all_package_ids.contains(&dep.package_id.to_lowercase()) {
                 missing.push(dep.clone());
             }
         }
@@ -359,13 +416,76 @@ pub fn clear_cache() {
     *cache = None;
 }
 
-fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: ModSource) -> Result<ModInfo> {
+// Global paths holder for thumbnailer during par_iter
+static GLOBAL_PATHS: Lazy<Mutex<Option<RimWorldPaths>>> = Lazy::new(|| Mutex::new(None));
+
+fn load_mod_smart(
+    about_file: &Path, 
+    mod_path: &Path, 
+    config: &ModsConfig, 
+    source: ModSource, 
+    m_time: Option<u64>,
+    metadata: &CustomMetadataMap
+) -> Result<ModInfo> {
+    let fallback_name = mod_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown_mod");
+    let id;
+
+    // 1. Try Cache First
+    let mut cached_data = None;
+    for (m_id, m) in metadata {
+        if m.last_modified == m_time && m.cached_name.is_some() {
+            if mod_path.to_string_lossy().contains(m_id) || fallback_name == m_id {
+                cached_data = Some((m_id.clone(), m));
+                break;
+            }
+        }
+    }
+
+    if let Some((m_id, m)) = cached_data {
+        let id_lower = m_id.to_lowercase();
+        let enabled = config.active_mods.iter().any(|a| a.to_lowercase() == id_lower);
+        
+        let picture_path = {
+            let gp = GLOBAL_PATHS.lock().unwrap();
+            if let Some(p) = gp.as_ref() {
+                ensure_thumbnail(mod_path, &m_id, p)
+            } else {
+                None
+            }
+        };
+
+        return Ok(ModInfo {
+            id: m_id,
+            name: m.cached_name.clone().unwrap_or_default(),
+            author: m.cached_author.clone().unwrap_or_default(),
+            version: None,
+            supported_version: Some(m.cached_supported_versions.clone().unwrap_or_default().join(", ")),
+            tags: vec![],
+            dependencies: m.cached_dependencies.clone().unwrap_or_default(),
+            load_after: m.cached_load_after.clone().unwrap_or_default(),
+            load_before: m.cached_load_before.clone().unwrap_or_default(),
+            incompatible_with: m.cached_incompatible_with.clone().unwrap_or_default(),
+            picture: picture_path,
+            path: mod_path.to_string_lossy().into_owned(),
+            descriptor_path: about_file.to_string_lossy().into_owned(),
+            remote_file_id: m.cached_published_file_id.clone(),
+            source,
+            enabled,
+            load_order: i32::MAX,
+            size_bytes: m.cached_size.unwrap_or(0),
+            custom_tags: m.tags.clone(),
+            custom_note: m.note.clone(),
+            workshop_name: m.workshop_name.clone(),
+            created_at: m.first_seen_at.unwrap_or(0),
+            missing_dependencies: vec![],
+        });
+    }
+
+    // 2. Fallback to Full Scan (Slow)
     let txt = fs::read_to_string(about_file)?;
     let d = about::parse_about(&txt).unwrap_or_default();
 
-    let fallback_name = mod_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown_mod");
-
-    let id = if d.package_id.is_empty() {
+    id = if d.package_id.is_empty() {
         fallback_name.to_lowercase()
     } else {
         d.package_id.clone()
@@ -374,12 +494,13 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
     let id_lower = id.to_lowercase();
     let enabled = config.active_mods.iter().any(|a| a.to_lowercase() == id_lower);
 
-    let size_bytes = dir_size(mod_path);
-    let picture = mod_path.join("About").join("Preview.png");
-    let picture_path = if picture.exists() {
-        Some(picture.to_string_lossy().replace("\\", "/"))
-    } else {
-        None
+    let picture_path = {
+        let gp = GLOBAL_PATHS.lock().unwrap();
+        if let Some(p) = gp.as_ref() {
+            ensure_thumbnail(mod_path, &id, p)
+        } else {
+            None
+        }
     };
 
     let name = if d.name.is_empty() {
@@ -389,34 +510,14 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
     };
 
     let mut remote_file_id = d.published_file_id;
-    
-    // 1. If folder name is numeric, that's likely our Workshop ID (very common in manual installs)
-    if remote_file_id.is_none() {
-        if fallback_name.chars().all(|c| c.is_ascii_digit()) {
-            remote_file_id = Some(fallback_name.to_string());
-        }
-    }
-
-    // 2. Check for PublishedFileId.txt (Steam-created metadata)
-    if remote_file_id.is_none() {
-        let pub_id_file = mod_path.join("PublishedFileId.txt");
-        if pub_id_file.exists() {
-            if let Ok(content) = fs::read_to_string(pub_id_file) {
-                let cleaned = content.trim();
-                if !cleaned.is_empty() && cleaned.chars().all(|c| c.is_ascii_digit()) {
-                    remote_file_id = Some(cleaned.to_string());
-                }
-            }
-        }
+    if remote_file_id.is_none() && fallback_name.chars().all(|c| c.is_ascii_digit()) {
+        remote_file_id = Some(fallback_name.to_string());
     }
 
     let mut custom_tags = vec![];
-    
-    // 3. Auto-detect "Third-Party / External" mods (The "Tà Đạo" stuff like RJW)
     let is_external = remote_file_id.is_none() && source == ModSource::Local && !REQUIRED_MOD_IDS.contains(&id_lower.as_str());
     if is_external {
         custom_tags.push("Third-Party".to_string());
-        // Special sub-tag for RJW ecosystem
         if id_lower.contains("rjw") || name.to_lowercase().contains("rimjobworld") {
             custom_tags.push("RJW Ecosystem".to_string());
         }
@@ -440,7 +541,7 @@ fn load_mod(about_file: &Path, mod_path: &Path, config: &ModsConfig, source: Mod
         source,
         enabled,
         load_order: i32::MAX,
-        size_bytes,
+        size_bytes: 0, 
         custom_tags,
         custom_note: String::new(),
         workshop_name: None,
@@ -457,6 +558,80 @@ fn dir_size(p: &Path) -> u64 {
         .filter_map(|e| e.metadata().ok())
         .map(|m| m.len())
         .sum()
+}
+
+fn ensure_thumbnail(mod_path: &Path, mod_id: &str, paths: &RimWorldPaths) -> Option<String> {
+    let mut preview_path = None;
+    
+    // Candidates for preview images
+    let candidates = [
+        "About/Preview.png", "About/preview.png", "About/Preview.jpg", "About/preview.jpg",
+        "Preview.png", "preview.png", "Preview.jpg", "preview.jpg", "Preview.jpeg", "preview.jpeg"
+    ];
+
+    for c in candidates {
+        let p = mod_path.join(c);
+        if p.exists() {
+            preview_path = Some(p);
+            break;
+        }
+    }
+
+    // Deep search if no common candidates found
+    if preview_path.is_none() {
+        if let Ok(iter) = fs::read_dir(mod_path) {
+            for entry in iter.flatten() {
+                let name = entry.file_name().to_string_lossy().to_lowercase();
+                if name.contains("preview") && (name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg") || name.ends_with(".webp")) {
+                    preview_path = Some(entry.path());
+                    break;
+                }
+                // Check one level deeper in common folders
+                if entry.path().is_dir() {
+                    let dir_name = name.clone();
+                    if dir_name == "about" || dir_name == "textures" || dir_name == "preview" {
+                        if let Ok(sub_iter) = fs::read_dir(entry.path()) {
+                            for sub_entry in sub_iter.flatten() {
+                                let sub_name = sub_entry.file_name().to_string_lossy().to_lowercase();
+                                if sub_name.contains("preview") && (sub_name.ends_with(".png") || sub_name.ends_with(".jpg") || sub_name.ends_with(".jpeg") || sub_name.ends_with(".webp")) {
+                                    preview_path = Some(sub_entry.path());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if preview_path.is_some() { break; }
+            }
+        }
+    }
+
+    let preview_path = preview_path?;
+    let cache_dir = PathBuf::from(&paths.mods_config_path).parent().unwrap().join("thumbnails");
+    if !cache_dir.exists() {
+        let _ = fs::create_dir_all(&cache_dir);
+    }
+
+    let thumb_path = cache_dir.join(format!("{}.jpg", mod_id));
+    
+    // Check if thumbnail is up to date
+    let original_mtime = fs::metadata(&preview_path).and_then(|m| m.modified()).ok();
+    let thumb_mtime = fs::metadata(&thumb_path).and_then(|m| m.modified()).ok();
+
+    if thumb_path.exists() && thumb_mtime >= original_mtime {
+        return Some(thumb_path.to_string_lossy().into_owned());
+    }
+
+    // Generate new thumbnail
+    if let Ok(img) = image::open(&preview_path) {
+        let thumbnail = img.thumbnail(160, 160);
+        if let Ok(_) = thumbnail.save_with_format(&thumb_path, image::ImageFormat::Jpeg) {
+            return Some(thumb_path.to_string_lossy().into_owned());
+        }
+    }
+
+    // Fallback to original if thumbnailing fails
+    Some(preview_path.to_string_lossy().into_owned())
 }
 
 pub fn set_enabled(paths: &RimWorldPaths, id: &str, enabled: bool) -> Result<()> {

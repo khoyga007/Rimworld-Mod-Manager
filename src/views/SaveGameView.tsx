@@ -64,18 +64,20 @@ export default function SaveGameView({ toast, onRefresh }: Props) {
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="animate-fade-in p-8" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Page Header */}
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Save Games</h1>
           <p style={{ color: "var(--color-text-dim)", fontSize: 14 }}>Analyze save files to find missing mods or check compatibility</p>
         </div>
-        <div style={{ textAlign: "right", display: "flex", alignItems: "flex-end", gap: 12 }}>
-          <button className="btn-secondary" onClick={loadSaves} title="Refresh Saves">🔄 Refresh</button>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{saves.length}</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Saves Found</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <button className="btn-secondary" onClick={loadSaves} title="Refresh Saves" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🔄</span> Refresh
+          </button>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{saves.length}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Saves Found</div>
           </div>
         </div>
       </div>

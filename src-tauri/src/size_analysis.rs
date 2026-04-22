@@ -116,33 +116,43 @@ pub fn analyze(mod_path: &Path) -> SizeBreakdown {
 
 /// Analyze list of (mod_id, mod_path). Uses cache keyed by mod_id + dir mtime.
 pub fn analyze_many(mods: Vec<(String, String)>, force: bool) -> Result<HashMap<String, SizeBreakdown>> {
-    let mut cache = load_cache();
-    let mut out: HashMap<String, SizeBreakdown> = HashMap::new();
-    let mut dirty = false;
-    for (id, path) in mods {
+    use rayon::prelude::*;
+    let cache = load_cache();
+    
+    // We process in parallel, but cache update needs to be thread-safe or handled after
+    let results: Vec<(String, SizeBreakdown, i64, bool)> = mods.into_par_iter().map(|(id, path)| {
         let p = Path::new(&path);
         let mtime = dir_mtime_ms(p);
+        
         if !force {
             if let Some(ent) = cache.entries.get(&id) {
                 if ent.mtime_ms == mtime && mtime != 0 {
-                    out.insert(id, ent.breakdown.clone());
-                    continue;
+                    return (id, ent.breakdown.clone(), mtime, false);
                 }
             }
         }
+        
         let b = analyze(p);
-        cache.entries.insert(
-            id.clone(),
-            CacheEntry {
+        (id, b, mtime, true)
+    }).collect();
+
+    let mut out = HashMap::new();
+    let mut new_cache = cache;
+    let mut dirty = false;
+
+    for (id, b, mtime, was_reanalyzed) in results {
+        if was_reanalyzed {
+            new_cache.entries.insert(id.clone(), CacheEntry {
                 mtime_ms: mtime,
                 breakdown: b.clone(),
-            },
-        );
+            });
+            dirty = true;
+        }
         out.insert(id, b);
-        dirty = true;
     }
+
     if dirty {
-        save_cache(&cache);
+        save_cache(&new_cache);
     }
     Ok(out)
 }

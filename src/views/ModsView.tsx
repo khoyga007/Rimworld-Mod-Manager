@@ -1,8 +1,11 @@
-import { memo, useState, useEffect, useCallback, useMemo } from "react";
+// v1.0.2 - Unified Search & RimPy Action Bar
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Search, RotateCw, Zap, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Tag, Plus, X, StickyNote } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided, DraggableStateSnapshot } from "@hello-pangea/dnd";
+import { FixedSizeList as List } from "react-window";
+
+import { Search, RotateCw, RefreshCw, RotateCcw, Zap, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, BarChart2, ChevronRight, ChevronLeft, Tag, Plus, X, StickyNote, Globe, Activity, Play } from "lucide-react";
 import type { ModInfo, Preset } from "../types";
 
 // Global image cache
@@ -32,6 +35,210 @@ function processImgQueue(onLoaded: () => void) {
   }
 }
 
+const ModCard = memo(({ 
+  mod, 
+  index, 
+  isActive, 
+  provided,
+  isDragging,
+  modSizes, 
+  formatSize, 
+  onRefresh, 
+  toast,
+  onToggle 
+}: { 
+  mod: ModInfo, 
+  index: number, 
+  isActive?: boolean, 
+  provided?: DraggableProvided,
+  isDragging?: boolean,
+  modSizes: any, 
+  formatSize: any, 
+  onRefresh: any, 
+  toast: (msg: string, type?: string) => void,
+  onToggle: (mod: ModInfo) => void 
+}) => {
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteValue, setNoteValue] = useState(mod.custom_note || "");
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTag, setNewTag] = useState("");
+
+  const handleSaveNote = async () => {
+    try {
+      await invoke("set_mod_note", { id: mod.id, note: noteValue });
+      setEditingNote(false);
+      onRefresh();
+      toast("Note saved!", "success");
+    } catch (e: any) { toast(e.toString(), "error"); }
+  };
+
+  const handleAddTag = async () => {
+    if (!newTag.trim()) { setAddingTag(false); return; }
+    try {
+      const tags = [...(mod.custom_tags || []), newTag.trim()];
+      await invoke("set_mod_tags", { id: mod.id, tags });
+      setNewTag("");
+      setAddingTag(false);
+      onRefresh();
+      toast("Tag added!", "success");
+    } catch (e: any) { toast(e.toString(), "error"); }
+  };
+
+  const removeTag = async (tag: string) => {
+    try {
+      const tags = (mod.custom_tags || []).filter(t => t !== tag);
+      await invoke("set_mod_tags", { id: mod.id, tags });
+      onRefresh();
+      toast("Tag removed", "info");
+    } catch (e: any) { toast(e.toString(), "error"); }
+  };
+
+  return (
+    <div
+      ref={provided?.innerRef}
+      {...provided?.draggableProps}
+      {...provided?.dragHandleProps}
+      className={`glass-card p-3 flex flex-col gap-2 group transition-all duration-200 ${
+        isDragging ? 'shadow-2xl border-accent/50 scale-[1.02] ring-2 ring-accent/30 z-50' : 'hover:border-white/20'
+      }`}
+      style={{ 
+        ...provided?.draggableProps.style,
+        willChange: "transform, opacity",
+        minHeight: '102px'
+      }}
+    >
+      <div className="flex items-center gap-3">
+        {isActive && (
+          <div className="w-8 h-8 flex items-center justify-center bg-accent/20 rounded-md text-[10px] font-black text-accent shrink-0">
+            {index + 1}
+          </div>
+        )}
+        
+        <div className="w-12 h-12 rounded-lg bg-black/40 flex-shrink-0 overflow-hidden relative border border-white/5 shadow-inner">
+          {_imgCache[mod.id] ? (
+            <img src={_imgCache[mod.id]} alt="" className="w-full h-full object-cover" loading="lazy" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center opacity-30"><Folder size={20} /></div>
+          )}
+          {!mod.enabled && <div className="absolute inset-0 bg-black/60 backdrop-grayscale-[1]" />}
+        </div>
+
+        <div className="flex-1 min-w-0" onClick={() => onToggle(mod)}>
+          <div className="flex items-center justify-between mb-0.5">
+            <h3 className={`text-sm font-bold truncate flex items-center gap-1.5 ${mod.enabled ? 'text-white' : 'text-muted-foreground'}`}>
+              {mod.name}
+              {mod.workshop_name && <span className="inline-flex items-center text-[8px] bg-blue-500/20 text-blue-400 px-1 rounded uppercase font-black">Steam</span>}
+            </h3>
+          </div>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className={`text-[8px] uppercase font-black px-1 rounded border ${
+              mod.source === 'official' ? 'border-emerald-500 bg-emerald-500/20 text-emerald-400' :
+              mod.source === 'workshop' ? 'border-blue-500/30 text-blue-400' : 
+              'border-green-500/30 text-green-400'
+            }`}>
+              {mod.source}
+            </span>
+            <span className="text-[10px] text-muted-foreground truncate opacity-60">by {mod.author || 'Unknown'}</span>
+            <span className="text-[10px] font-mono opacity-40 ml-auto">{formatSize(mod.size_bytes)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1 mt-1 border-t border-white/5 pt-2">
+        {mod.custom_tags?.map(t => (
+          <span key={t} className="flex items-center gap-1 text-[9px] bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded-md group/tag">
+            {t}
+            <button onClick={() => removeTag(t)} className="opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+        {addingTag ? (
+          <input 
+            autoFocus
+            className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[9px] w-20"
+            value={newTag}
+            onChange={e => setNewTag(e.target.value)}
+            onBlur={handleAddTag}
+            onKeyDown={e => e.key === 'Enter' && handleAddTag()}
+          />
+        ) : (
+          <button onClick={() => setAddingTag(true)} className="text-[9px] text-muted-foreground hover:text-accent bg-white/5 px-1.5 py-0.5 rounded-md transition-colors">
+            <Plus size={10} />
+          </button>
+        )}
+        
+        <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => setEditingNote(!editingNote)} className="p-1 hover:bg-white/10 rounded" title="Add Note"><StickyNote size={12} /></button>
+          <button onClick={() => invoke("open_path_or_url", { target: mod.path })} className="p-1 hover:bg-white/10 rounded" title="Open Folder"><Folder size={12} /></button>
+          <button 
+            onClick={() => {
+              if(confirm(`Delete ${mod.name}?`)) {
+                invoke("delete_mod", { id: mod.id })
+                  .then(() => { 
+                    toast(`${mod.name} deleted`, "success");
+                    onRefresh(); 
+                  })
+                  .catch(e => toast(e.toString(), "error"));
+              }
+            }} 
+            className="p-1 hover:bg-red-500/20 text-red-400 rounded" 
+            title="Delete Mod"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      </div>
+
+      {editingNote && (
+        <div className="mt-1 flex gap-1 animate-in zoom-in-95">
+          <input 
+            autoFocus
+            className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-accent/50"
+            value={noteValue}
+            onChange={e => setNoteValue(e.target.value)}
+            onBlur={handleSaveNote}
+            onKeyDown={e => e.key === 'Enter' && handleSaveNote()}
+          />
+        </div>
+      )}
+
+      {mod.missing_dependencies?.length > 0 && (
+        <div className="mt-1 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+          <LifeBuoy size={12} className="text-red-400 shrink-0" />
+          <span className="text-[10px] text-red-400 truncate">Missing: {mod.missing_dependencies.map(d => d.display_name || d.package_id).join(", ")}</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
+function VirtualRow({ index, style, data }: any) {
+  const mod = data.list[index];
+  if (!mod) return null;
+
+  return (
+    <div style={{ ...style, padding: '0 8px 8px 8px' }}>
+      <Draggable draggableId={mod.id} index={index}>
+        {(provided, snapshot) => (
+          <ModCard
+            mod={mod}
+            index={index}
+            isActive={data.isActive}
+            provided={provided}
+            isDragging={snapshot.isDragging}
+            modSizes={data.modSizes}
+            formatSize={data.formatSize}
+            onRefresh={data.onRefresh}
+            toast={data.toast}
+            onToggle={data.onToggle}
+          />
+        )}
+      </Draggable>
+    </div>
+  );
+}
+
 interface Props {
   mods: ModInfo[];
   onRefresh: () => void;
@@ -39,7 +246,7 @@ interface Props {
 }
 
 export default function ModsView({ mods, onRefresh, toast }: Props) {
-  const [search, setSearch] = useState("");
+  const [modSearchText, setModSearchText] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
@@ -52,8 +259,21 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
   const [compressionFormat, setCompressionFormat] = useState<"smart" | "bc7" | "bc1">("smart");
   const [modSizes, setModSizes] = useState<Record<string, { total: number, assets: number }>>({});
   const [analyzing, setAnalyzing] = useState(false);
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
 
   const bumpImgVer = useCallback(() => setImgVer((v) => v + 1), []);
+
+  const loadPresets = useCallback(async () => {
+    try {
+      const p = await invoke<Preset[]>("list_presets");
+      setPresets(p);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => {
+    loadPresets();
+  }, [loadPresets]);
 
 
   // Synchronize local state with mods prop when it changes
@@ -97,281 +317,345 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
     return () => { if (unlisten) unlisten(); };
   }, []);
 
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    mods.forEach(m => m.custom_tags?.forEach(t => tags.add(t)));
-    return Array.from(tags).sort();
-  }, [mods]);
-
-  const onDragEnd = (result: DropResult) => {
+  const onDragEnd = useCallback((result: DropResult) => {
+    if (!result.destination) return;
     const { source, destination } = result;
-    if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
-    const newActive = Array.from(localActive);
-    const newInactive = Array.from(localInactive);
+    if (source.droppableId === destination.droppableId) {
+      const items = source.droppableId === "active" ? [...localActive] : [...localInactive];
+      const [reorderedItem] = items.splice(source.index, 1);
+      items.splice(destination.index, 0, reorderedItem);
 
-    if (source.droppableId === 'active' && destination.droppableId === 'active') {
-      const [removed] = newActive.splice(source.index, 1);
-      newActive.splice(destination.index, 0, removed);
-    } else if (source.droppableId === 'inactive' && destination.droppableId === 'inactive') {
-      const [removed] = newInactive.splice(source.index, 1);
-      newInactive.splice(destination.index, 0, removed);
-    } else if (source.droppableId === 'inactive' && destination.droppableId === 'active') {
-      const [removed] = newInactive.splice(source.index, 1);
-      removed.enabled = true;
-      newActive.splice(destination.index, 0, removed);
-    } else if (source.droppableId === 'active' && destination.droppableId === 'inactive') {
-      const [removed] = newActive.splice(source.index, 1);
-      removed.enabled = false;
-      newInactive.splice(destination.index, 0, removed);
+      if (source.droppableId === "active") {
+        setLocalActive(items);
+        setDirty(true);
+      } else {
+        setLocalInactive(items);
+      }
+    } else {
+      const sourceItems = source.droppableId === "active" ? [...localActive] : [...localInactive];
+      const destItems = destination.droppableId === "active" ? [...localActive] : [...localInactive];
+      const [movedItem] = sourceItems.splice(source.index, 1);
+      
+      if (destination.droppableId === "active") {
+        movedItem.enabled = true;
+        destItems.splice(destination.index, 0, movedItem);
+        setLocalActive(destItems);
+        setLocalInactive(sourceItems);
+        setDirty(true);
+        invoke("set_mod_enabled", { id: movedItem.id, enabled: true }).catch(console.error);
+      } else {
+        movedItem.enabled = false;
+        destItems.splice(destination.index, 0, movedItem);
+        setLocalActive(sourceItems);
+        setLocalInactive(destItems);
+        setDirty(true);
+        invoke("set_mod_enabled", { id: movedItem.id, enabled: false }).catch(console.error);
+      }
     }
-
-    setLocalActive(newActive);
-    setLocalInactive(newInactive);
-    setDirty(true);
-  };
+  }, [localActive, localInactive]);
 
   const saveOrder = async () => {
     try {
       const ids = localActive.map(m => m.id);
       await invoke("set_load_order", { ids });
-      toast("Load order and states saved!", "success");
       setDirty(false);
-      onRefresh();
-    } catch (e: any) { toast(e.toString(), "error"); }
-  };
-
-  const runAnalysis = async () => {
-    setAnalyzing(true);
-    try {
-      const res = await invoke<Record<string, any>>("analyze_mod_sizes");
-      setModSizes(res as any);
-      toast("Analysis complete!", "success");
-    } catch (e: any) { toast(e.toString(), "error"); } finally { setAnalyzing(false); }
-  };
-
-  const batchOptimize = async () => {
-    const local = mods.filter(m => !m.path.includes("workshop"));
-    if (local.length === 0) return;
-    setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: "⚡ Optimizing Textures" });
-    try { await invoke("optimize_all_local_mods", { format: compressionFormat }); toast("Optimization finished!", "success"); } 
-    catch (e: any) { toast(e.toString(), "error"); } finally { setBatchStatus(null); onRefresh(); }
-  };
-
-  const batchResize = async () => {
-    const local = mods.filter(m => !m.path.includes("workshop"));
-    if (local.length === 0) return;
-    setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: `📐 Resizing (${resizeRes}px)` });
-    try { await invoke("resize_all_local_mods", { maxRes: resizeRes, format: compressionFormat }); toast("Resize finished!", "success"); } 
-    catch (e: any) { toast(e.toString(), "error"); } finally { setBatchStatus(null); onRefresh(); }
-  };
-
-  const batchRestore = async () => {
-    setBatchStatus({ active: true, currentModName: "Initializing...", progress: 0, title: "🆘 Emergency Restore" });
-    try { await invoke("restore_all_local_mods"); toast("Restore finished!", "success"); } 
-    catch (e: any) { toast(e.toString(), "error"); } finally { setBatchStatus(null); onRefresh(); }
-  };
-
-  const enableAll = async () => {
-    await invoke("set_all_mods_enabled", { enabled: true });
-    onRefresh();
-    toast("All mods enabled", "success");
-  };
-
-  const disableAll = async () => {
-    await invoke("set_all_mods_enabled", { enabled: false });
-    onRefresh();
-    toast("All mods disabled", "info");
-  };
-
-  const filterMod = (m: ModInfo) => {
-    const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase()) || 
-                          m.id.toLowerCase().includes(search.toLowerCase()) ||
-                          m.custom_note.toLowerCase().includes(search.toLowerCase()) ||
-                          (m.workshop_name && m.workshop_name.toLowerCase().includes(search.toLowerCase())) ||
-                          m.custom_tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    const matchesTag = !selectedTag || m.custom_tags?.includes(selectedTag);
-    return matchesSearch && matchesTag;
-  };
-
-  const [refreshingWS, setRefreshingWS] = useState(false);
-
-  const refreshWorkshopInfo = async () => {
-    // Sync for ANY mod that has a workshop ID, even if it's a local copy
-    const workshopMods = mods.filter(m => m.remote_file_id);
-    if (workshopMods.length === 0) return;
-
-    setRefreshingWS(true);
-    try {
-      const ids = workshopMods.map(m => m.remote_file_id!);
-      const metas = await invoke<[string, any][]>("fetch_workshop_metas", { ids });
-      
-      for (const [id, meta] of metas) {
-        const mod = workshopMods.find(m => m.remote_file_id === id);
-        if (mod && meta.title) {
-          await invoke("set_mod_workshop_name", { id: mod.id, name: meta.title });
-        }
-      }
-      toast(`Updated info for ${metas.length} mods`, "success");
+      toast("Load order saved!", "success");
       onRefresh();
     } catch (e: any) {
-      toast("Failed to update workshop info: " + e.toString(), "error");
-    } finally {
-      setRefreshingWS(false);
+      toast(e.toString(), "error");
     }
   };
 
-  const filteredInactive = localInactive.filter(filterMod);
-  const filteredActive = localActive.filter(filterMod);
+  const optimizeAll = async () => {
+    const localMods = localActive.filter(m => m.source === "local");
+    if (localMods.length === 0) {
+      toast("No local mods active to optimize!", "warning");
+      return;
+    }
+    setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: "Optimizing Textures" });
+    try {
+      await invoke("resize_all_local_mods", { 
+        maxRes: resizeRes,
+        format: compressionFormat
+      });
+      toast("Optimization complete!", "success");
+      onRefresh();
+    } catch (e: any) {
+      toast(e.toString(), "error");
+    } finally {
+      setBatchStatus(null);
+    }
+  };
+
+  const analyzeAllSizes = async () => {
+    setAnalyzing(true);
+    try {
+      const results = await invoke<Record<string, { total: number, assets: number }>>("analyze_all_mod_sizes");
+      setModSizes(results);
+      toast("Size analysis complete!", "info");
+    } catch (e: any) {
+      toast(e.toString(), "error");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const restoreSystem = async () => {
+    if (!confirm("This will download 2.5GB of core assets to ensure game stability. Continue?")) return;
+    setBatchStatus({ active: true, currentModName: "Initializing...", progress: 0, title: "System Restore" });
+    try {
+      await invoke("restore_all_local_mods");
+      toast("Restore complete!", "success");
+    } catch (e: any) {
+      toast(e.toString(), "error");
+    } finally {
+      setBatchStatus(null);
+    }
+  };
 
   const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (!bytes) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
-  const [presets, setPresets] = useState<Preset[]>([]);
-  const [activePresetId, setActivePresetId] = useState<string | null>(null);
-
-  const loadPresets = async () => {
-    try {
-      const list = await invoke<Preset[]>("list_presets");
-      setPresets(list);
-    } catch (e) { console.error(e); }
+  const enableAll = () => {
+    const newActive = [...localActive, ...localInactive.map(m => ({ ...m, enabled: true }))];
+    setLocalActive(newActive);
+    setLocalInactive([]);
+    setDirty(true);
   };
 
-  useEffect(() => { loadPresets(); }, []);
+  const disableAll = () => {
+    // Keep official mods active
+    const officialMods = localActive.filter(m => m.source === "official" || m.author === "Ludeon Studios");
+    const otherMods = localActive.filter(m => m.source !== "official" && m.author !== "Ludeon Studios");
+    
+    if (otherMods.length === 0) {
+      toast("No non-official mods to disable!", "info");
+      return;
+    }
 
-  const saveCurrentProfile = async () => {
-    const name = prompt("Enter Profile Name (e.g. 'Middle Ages', 'Vanilla+'):");
-    if (!name) return;
-    const enabledIds = mods.filter(m => m.enabled).map(m => m.id);
-    try {
-      const p = await invoke<Preset>("create_preset", { name, modIds: enabledIds, note: `Created from ModsView` });
-      setPresets(prev => [...prev, p]);
-      setActivePresetId(p.id);
-      toast(`Profile "${name}" saved!`, "success");
-    } catch (e: any) { toast(e.toString(), "error"); }
+    const newInactive = [...localInactive, ...otherMods.map(m => ({ ...m, enabled: false }))];
+    setLocalInactive(newInactive);
+    setLocalActive(officialMods);
+    setDirty(true);
+    
+    // Also update backend for non-official mods
+    otherMods.forEach(m => {
+      invoke("set_mod_enabled", { id: m.id, enabled: false }).catch(console.error);
+    });
   };
 
-  const applyProfile = async (id: string) => {
-    try {
-      await invoke("apply_preset", { id });
-      setActivePresetId(id);
-      setDirty(false);
-      onRefresh();
-      toast("Profile applied!", "success");
-    } catch (e: any) { toast(e.toString(), "error"); }
-  };
+  const filteredInactive = useMemo(() => {
+    return localInactive.filter(m => {
+      const matchesSearch = m.name.toLowerCase().includes(modSearchText.toLowerCase()) || 
+                           m.author?.toLowerCase().includes(modSearchText.toLowerCase());
+      const matchesTag = !selectedTag || m.custom_tags?.includes(selectedTag);
+      return matchesSearch && matchesTag;
+    });
+  }, [localInactive, modSearchText, selectedTag]);
+
+  const filteredActive = useMemo(() => {
+    return localActive.filter(m => {
+      const matchesSearch = m.name.toLowerCase().includes(modSearchText.toLowerCase()) || 
+                           m.author?.toLowerCase().includes(modSearchText.toLowerCase());
+      const matchesTag = !selectedTag || m.custom_tags?.includes(selectedTag);
+      return matchesSearch && matchesTag;
+    });
+  }, [localActive, modSearchText, selectedTag]);
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    mods.forEach(m => m.custom_tags?.forEach(t => tags.add(t)));
+    return Array.from(tags);
+  }, [mods]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden animate-fade-in p-2">
-      {/* Header Area */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">RimWorld Mod Manager</h1>
-            <p className="text-muted-foreground text-sm">Drag and drop to manage your load order</p>
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+      {/* RIMPY STYLE ACTION BAR */}
+      <div className="flex items-center justify-between p-2 bg-black/40 border-b border-white/5 backdrop-blur-md z-10">
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={saveOrder}
+            disabled={!dirty}
+            className={`p-2 rounded-lg flex items-center gap-2 transition-all ${
+              dirty ? 'bg-accent text-accent-foreground shadow-lg shadow-accent/20 scale-105' : 'bg-white/5 text-muted-foreground opacity-50'
+            }`}
+          >
+            <Save size={16} />
+            <span className="text-xs font-bold uppercase tracking-tighter">Save</span>
+          </button>
+
+          <div className="h-6 w-px bg-white/10 mx-2" />
+
+          {/* Profile Dropdown */}
+          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5">
+            <select 
+              value={selectedPresetId}
+              onChange={async (e) => {
+                const id = e.target.value;
+                if (!id) return;
+                setSelectedPresetId(id);
+                try {
+                  await invoke("apply_preset", { id });
+                  toast("Profile applied!", "success");
+                  onRefresh();
+                } catch (err: any) { toast(err.toString(), "error"); }
+              }}
+              className="bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-widest text-accent px-2 py-1 cursor-pointer"
+            >
+              <option value="" className="bg-[#1a1b1e]">Select Profile</option>
+              {presets.map(p => (
+                <option key={p.id} value={p.id} className="bg-[#1a1b1e]">{p.name}</option>
+              ))}
+            </select>
+            
+            <button 
+              onClick={async () => {
+                const name = prompt("New profile name:");
+                if (!name) return;
+                try {
+                  await invoke("create_preset", { name, modIds: localActive.map(m => m.id) });
+                  toast("Profile created!", "success");
+                  loadPresets();
+                } catch (err: any) { toast(err.toString(), "error"); }
+              }}
+              className="p-1 hover:bg-white/10 rounded text-muted-foreground"
+              title="Create New Profile"
+            >
+              <Plus size={14} />
+            </button>
+
+            {selectedPresetId && (
+              <button 
+                onClick={async () => {
+                  if (confirm("Delete this profile?")) {
+                    try {
+                      await invoke("delete_preset", { id: selectedPresetId });
+                      setSelectedPresetId("");
+                      toast("Profile deleted", "info");
+                      loadPresets();
+                    } catch (err: any) { toast(err.toString(), "error"); }
+                  }
+                }}
+                className="p-1 hover:bg-red-500/20 text-red-400 rounded"
+                title="Delete Profile"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
           
-          {/* Quick Profile Selector */}
-          <div className="h-10 px-3 bg-black/20 border border-white/5 rounded-xl flex items-center gap-3">
-             <Save size={16} className="text-accent opacity-60" />
-             <select 
-               className="bg-transparent text-sm font-semibold outline-none cursor-pointer min-w-[120px]"
-               value={activePresetId || ""}
-               onChange={(e) => e.target.value === "new" ? saveCurrentProfile() : applyProfile(e.target.value)}
+          <div className="h-6 w-px bg-white/10 mx-2" />
+
+          <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/5">
+            <button 
+              onClick={analyzeAllSizes}
+              disabled={analyzing}
+              className="p-1.5 hover:bg-white/10 rounded-md text-muted-foreground transition-colors group relative"
+              title="Analyze Sizes"
+            >
+              {analyzing ? <RefreshCw size={16} className="animate-spin text-accent" /> : <BarChart3 size={16} />}
+            </button>
+            <button 
+              onClick={restoreSystem}
+              className="p-1.5 hover:bg-white/10 rounded-md text-muted-foreground transition-colors group relative"
+              title="System Restore"
+            >
+              <LifeBuoy size={16} />
+            </button>
+          </div>
+
+          <div className="h-6 w-px bg-white/10 mx-2" />
+
+          {/* Texture Optimization Cluster */}
+          <div className="flex items-center gap-1 bg-accent/5 p-1 rounded-xl border border-accent/10">
+             {/* Resolution Toggle */}
+             <button 
+               onClick={() => setResizeRes(prev => prev === 512 ? 1024 : prev === 1024 ? 2048 : 512)}
+               className="px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent border border-accent/20 hover:bg-accent/10"
+               title="Click to Cycle Resolution"
              >
-               <option value="" disabled>Select Profile...</option>
-               {presets.map(p => (
-                 <option key={p.id} value={p.id}>{p.name} ({p.mod_ids.length})</option>
-               ))}
-               <option value="new" className="text-accent font-bold">+ Save Current Setup...</option>
-             </select>
+               {resizeRes}px
+             </button>
+
+             {/* Compression Toggle */}
+             <button 
+               onClick={() => setCompressionFormat(prev => prev === "smart" ? "bc7" : prev === "bc7" ? "bc1" : "smart")}
+               className="px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent/70 border border-accent/10 hover:bg-accent/10 uppercase"
+               title="Compression Format"
+             >
+               {compressionFormat}
+             </button>
+
+             <button 
+              onClick={optimizeAll}
+              className="p-1.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-all flex items-center gap-2"
+              title="Optimize Textures"
+            >
+              <Scaling size={16} />
+              <span className="text-[10px] font-black uppercase">Optimize</span>
+            </button>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {dirty && (
-            <button onClick={saveOrder} className="btn-primary px-6 py-2 flex items-center gap-2 shadow-lg shadow-accent/20">
-              <Save size={18} /> Save Changes
-            </button>
-          )}
           <button 
-            onClick={refreshWorkshopInfo}
-            disabled={refreshingWS}
-            className={`btn-secondary flex items-center gap-2 ${refreshingWS ? 'opacity-50' : ''}`}
-            title="Sync original names from Steam Workshop"
+            onClick={() => invoke("launch_rimworld").catch(e => toast(e.toString(), "error"))}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs transition-all shadow-lg shadow-emerald-900/20 active:scale-95 group"
           >
-            <RotateCw size={18} className={refreshingWS ? "animate-spin" : ""} />
-            {refreshingWS ? "Syncing..." : "Sync Workshop"}
+            <Play size={16} className="fill-current" />
+            <span>Launch Game</span>
           </button>
-          <button onClick={onRefresh} className="btn-secondary p-2"><RotateCw size={20} /></button>
-        </div>
-      </div>
 
-      {/* Toolbar Area */}
-      <div className="glass-card p-4 mb-2 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-1 min-w-[300px]">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-40" size={18} />
+          <div className="flex items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 transition-all w-64 shadow-inner">
+            <Search size={14} className="text-muted-foreground mr-2" />
             <input 
-              className="input-field pl-10 w-full" 
-              placeholder="Search by name or tag..." 
-              value={search} 
-              onChange={e => setSearch(e.target.value)} 
+              className="bg-transparent border-none outline-none text-xs w-full placeholder:text-muted-foreground/50"
+              placeholder="Search mods..."
+              value={modSearchText}
+              onChange={e => setModSearchText(e.target.value)}
             />
           </div>
-          <button onClick={runAnalysis} disabled={analyzing} className="btn-secondary flex items-center gap-2">
-            <BarChart3 size={18} /> {analyzing ? "Analyzing..." : "Analyze VRAM"}
-          </button>
-        </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/5">
-             <span className="text-xs text-muted-foreground px-2">Format:</span>
-             <select value={compressionFormat} onChange={e => setCompressionFormat(e.target.value as any)} className="bg-transparent text-sm font-semibold outline-none cursor-pointer">
-                <option value="smart">Smart</option>
-                <option value="bc7">BC7</option>
-                <option value="bc1">BC1</option>
-             </select>
-          </div>
-          <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/5">
-             <span className="text-xs text-muted-foreground px-2">Max:</span>
-             <select value={resizeRes} onChange={e => setResizeRes(Number(e.target.value) as any)} className="bg-transparent text-sm font-semibold outline-none cursor-pointer">
-                <option value={2048}>2048px</option>
-                <option value={1024}>1024px</option>
-                <option value={512}>512px</option>
-             </select>
-          </div>
-          <button onClick={batchOptimize} className="btn-secondary flex items-center gap-2" title="Convert PNG to DDS">
-            <Zap size={18} className="text-yellow-500" /> Optimize
-          </button>
-          <button onClick={batchResize} className="btn-secondary flex items-center gap-2" title="Resize and Compress">
-            <Scaling size={18} className="text-blue-500" /> Resize
-          </button>
-          <button onClick={batchRestore} className="btn-secondary flex items-center gap-2 text-red-400" title="Redownload from Steam">
-            <LifeBuoy size={18} /> Emergency
+          <button 
+            onClick={async () => {
+              try {
+                await invoke("refresh_mods");
+                onRefresh();
+                toast("Mod list refreshed!", "success");
+              } catch (e: any) { toast(e.toString(), "error"); }
+            }}
+            className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground transition-all hover:rotate-180 duration-500"
+            title="Refresh Mod List"
+          >
+            <RefreshCw size={16} />
           </button>
         </div>
       </div>
 
-      {/* Tags Filter Strip */}
+      {/* Tags Filter Ribbon */}
       {allTags.length > 0 && (
-        <div className="flex items-center gap-2 mb-6 overflow-x-auto py-1 px-2 no-scrollbar">
-          <Tag size={14} className="text-muted-foreground shrink-0" />
+        <div className="flex items-center gap-1 p-2 bg-black/20 border-b border-white/5 overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setSelectedTag(null)}
-            className={`text-[10px] px-3 py-1 rounded-full border transition-all shrink-0 ${!selectedTag ? 'bg-accent/20 border-accent text-accent' : 'bg-white/5 border-white/5 text-muted-foreground hover:bg-white/10'}`}
+            className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all ${
+              !selectedTag ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+            }`}
           >
             All
           </button>
           {allTags.map(tag => (
             <button 
               key={tag}
-              onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-all shrink-0 ${selectedTag === tag ? 'bg-accent/20 border-accent text-accent' : 'bg-white/5 border-white/5 text-muted-foreground hover:bg-white/10'}`}
+              onClick={() => setSelectedTag(tag)}
+              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all ${
+                selectedTag === tag ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+              }`}
             >
               {tag}
             </button>
@@ -379,291 +663,172 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
         </div>
       )}
 
+      {/* Batch Status Overlay */}
       {batchStatus && (
-        <div className="mb-6 animate-slide-down">
-          <div className="flex justify-between text-xs font-bold text-accent mb-2">
-            <span>{batchStatus.title}: {batchStatus.currentModName}</span>
-            <span>{batchStatus.progress}%</span>
-          </div>
-          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <div className="h-full bg-accent transition-all duration-300 shadow-[0_0_10px_rgba(var(--color-accent-rgb),0.5)]" style={{ width: `${batchStatus.progress}%` }} />
+        <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-xl flex items-center justify-center p-8 animate-in fade-in duration-300">
+          <div className="max-w-md w-full glass-card p-8 border-accent/20 shadow-2xl shadow-accent/10 relative overflow-hidden group">
+            <div className="absolute top-0 left-0 w-full h-1 bg-accent/10">
+              <div className="h-full bg-accent shadow-[0_0_15px_rgba(var(--accent),0.5)] transition-all duration-300" style={{ width: `${batchStatus.progress}%` }} />
+            </div>
+            
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 bg-accent/10 rounded-2xl text-accent animate-pulse">
+                <Scaling size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black uppercase tracking-tighter text-white">{batchStatus.title}</h3>
+                <p className="text-xs text-muted-foreground font-mono">Process ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                <span>Working on</span>
+                <span className="text-accent">{batchStatus.progress}%</span>
+              </div>
+              <div className="text-sm font-medium text-white truncate bg-white/5 p-3 rounded-lg border border-white/5">
+                {batchStatus.currentModName}
+              </div>
+              <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                <div 
+                  className="h-full bg-accent transition-all duration-300 ease-out shadow-[0_0_10px_rgba(var(--accent),0.3)]" 
+                  style={{ width: `${batchStatus.progress}%` }} 
+                />
+              </div>
+              <p className="text-[10px] text-center text-muted-foreground italic opacity-50">Please do not close the application during this process.</p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Main Drag-n-Drop Area */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-6 flex-1 min-h-0 overflow-hidden">
-          
-          {/* LEFT COLUMN: Library (Inactive) */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex items-center justify-between mb-2 px-2">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Inactive Mods <span className="text-xs bg-white/10 px-2 py-0.5 rounded-full">{filteredInactive.length}</span>
+        <div className="flex-1 flex gap-4 overflow-hidden min-h-0 px-2">
+          {/* Inactive Mods Column */}
+          <div className="flex-1 flex flex-col bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
+            <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <h2 className="text-sm font-black uppercase tracking-widest text-white/40 flex items-center gap-2">
+                Inactive <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/60">{localInactive.length}</span>
               </h2>
-              <button onClick={enableAll} className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-accent transition-colors px-2 py-1 bg-white/5 rounded">Enable All</button>
+              <button onClick={enableAll} className="text-[9px] font-bold text-muted-foreground hover:text-white">ENABLE ALL</button>
             </div>
-            <Droppable droppableId="inactive">
-              {(provided, snapshot) => (
-                <div 
-                  {...provided.droppableProps}
-                  ref={provided.innerRef}
-                  className={`flex-1 overflow-y-auto pr-2 custom-scrollbar transition-colors rounded-xl border-2 border-dashed ${snapshot.isDraggingOver ? 'bg-accent/5 border-accent/40' : 'border-transparent'}`}
-                >
-                  <div className="flex flex-col gap-2 p-1">
-                    {filteredInactive.map((mod, index) => (
-                      <ModCard key={mod.id} mod={mod} index={index} modSizes={modSizes} formatSize={formatSize} onRefresh={onRefresh} />
-                    ))}
-                    {provided.placeholder}
+            <div className="flex-1 relative">
+              <Droppable 
+                droppableId="inactive" 
+                mode="virtual"
+                renderClone={(provided, snapshot, rubric) => (
+                  <ModCard
+                    mod={filteredInactive[rubric.source.index]}
+                    index={rubric.source.index}
+                    provided={provided}
+                    isDragging={snapshot.isDragging}
+                    modSizes={modSizes}
+                    formatSize={formatSize}
+                    onRefresh={onRefresh}
+                    toast={toast}
+                    onToggle={() => {}} // No toggle during drag
+                  />
+                )}
+              >
+                {(provided) => (
+                  <div className="h-full w-full">
+                    <List
+                      height={window.innerHeight - 240}
+                      itemCount={filteredInactive.length}
+                      itemSize={110} // Height + Gap
+                      width="100%"
+                      outerRef={provided.innerRef}
+                      itemData={{
+                        list: filteredInactive,
+                        modSizes,
+                        formatSize,
+                        onRefresh,
+                        toast,
+                        onToggle: (mod: ModInfo) => {
+                          setLocalInactive(prev => prev.filter(m => m.id !== mod.id));
+                          setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
+                          setDirty(true);
+                          invoke("set_mod_enabled", { id: mod.id, enabled: true }).catch(() => onRefresh());
+                        }
+                      }}
+                      className="custom-scrollbar"
+                    >
+                      {VirtualRow}
+                    </List>
                   </div>
-                </div>
-              )}
-            </Droppable>
-          </div>
-
-          {/* MIDDLE: Transfer Buttons (Optional but nice) */}
-          <div className="flex flex-col justify-center gap-4">
-            <div className="p-2 rounded-full bg-white/5 border border-white/10 opacity-30">
-              <ChevronRight size={24} />
-            </div>
-            <div className="p-2 rounded-full bg-white/5 border border-white/10 opacity-30">
-              <ChevronLeft size={24} />
+                )}
+              </Droppable>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Load Order (Active) */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex items-center justify-between mb-2 px-2">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Active Load Order <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded-full">{filteredActive.length}</span>
+          <div className="flex flex-col justify-center opacity-10">
+            <ChevronRight size={20} />
+            <ChevronLeft size={20} />
+          </div>
+
+          {/* Active Column */}
+          <div className="flex-1 flex flex-col bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
+            <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <h2 className="text-sm font-black uppercase tracking-widest text-accent flex items-center gap-2">
+                Active <span className="text-[10px] bg-accent/20 px-1.5 py-0.5 rounded text-accent">{localActive.length}</span>
               </h2>
-              <div className="flex items-center gap-2">
-                <button onClick={disableAll} className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-red-400 transition-colors px-2 py-1 bg-white/5 rounded">Disable All</button>
-                <button className="text-xs text-muted-foreground hover:text-accent transition-colors" onClick={() => invoke("apply_auto_sort", { activeIds: localActive.map(m => m.id) }).then(() => onRefresh())}>⚡ Auto-Sort</button>
-              </div>
+              <button onClick={disableAll} className="text-[9px] font-bold text-muted-foreground hover:text-red-400">DISABLE ALL</button>
             </div>
-            <Droppable droppableId="active">
-              {(provided, snapshot) => (
-                <div 
-                  {...provided.droppableProps}
-                  ref={provided.innerRef}
-                  className={`flex-1 overflow-y-auto pr-2 custom-scrollbar transition-colors rounded-xl border-2 border-dashed ${snapshot.isDraggingOver ? 'bg-accent/10 border-accent/60' : 'border-accent/10'}`}
-                >
-                  <div className="flex flex-col gap-2 p-1">
-                    {filteredActive.map((mod, index) => (
-                      <ModCard key={mod.id} mod={mod} index={index} modSizes={modSizes} formatSize={formatSize} onRefresh={onRefresh} isActive />
-                    ))}
-                    {provided.placeholder}
+            <div className="flex-1 relative">
+              <Droppable 
+                droppableId="active" 
+                mode="virtual"
+                renderClone={(provided, snapshot, rubric) => (
+                  <ModCard
+                    mod={filteredActive[rubric.source.index]}
+                    index={rubric.source.index}
+                    provided={provided}
+                    isDragging={snapshot.isDragging}
+                    isActive
+                    modSizes={modSizes}
+                    formatSize={formatSize}
+                    onRefresh={onRefresh}
+                    toast={toast}
+                    onToggle={() => {}}
+                  />
+                )}
+              >
+                {(provided) => (
+                  <div className="h-full w-full">
+                    <List
+                      height={window.innerHeight - 240}
+                      itemCount={filteredActive.length}
+                      itemSize={110}
+                      width="100%"
+                      outerRef={provided.innerRef}
+                      itemData={{
+                        list: filteredActive,
+                        modSizes,
+                        formatSize,
+                        onRefresh,
+                        toast,
+                        isActive: true,
+                        onToggle: (mod: ModInfo) => {
+                          if (mod.source === "official" || mod.author === "Ludeon Studios") {
+                            toast("Cannot disable official game content!", "warning");
+                            return;
+                          }
+                          setLocalActive(prev => prev.filter(m => m.id !== mod.id));
+                          setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
+                          setDirty(true);
+                          invoke("set_mod_enabled", { id: mod.id, enabled: false }).catch(() => onRefresh());
+                        }
+                      }}
+                      className="custom-scrollbar"
+                    >
+                      {VirtualRow}
+                    </List>
                   </div>
-                </div>
-              )}
-            </Droppable>
+                )}
+              </Droppable>
+            </div>
           </div>
-
         </div>
       </DragDropContext>
-    </div>
+  </div>
   );
 }
-
-const ModCard = memo(({ mod, index, modSizes, formatSize, onRefresh, isActive }: { 
-  mod: ModInfo; index: number; modSizes: any; formatSize: any; onRefresh: () => void; isActive?: boolean 
-}) => {
-  const [addingTag, setAddingTag] = useState(false);
-  const [newTag, setNewTag] = useState("");
-  const [editingNote, setEditingNote] = useState(false);
-  const [noteValue, setNoteValue] = useState(mod.custom_note || "");
-
-  const handleAddTag = async () => {
-    if (!newTag.trim()) { setAddingTag(false); return; }
-    const tags = [...(mod.custom_tags || []), newTag.trim()];
-    await invoke("set_mod_tags", { id: mod.id, tags });
-    setNewTag("");
-    setAddingTag(false);
-    onRefresh();
-  };
-
-  const removeTag = async (tag: string) => {
-    const tags = mod.custom_tags.filter(t => t !== tag);
-    await invoke("set_mod_tags", { id: mod.id, tags });
-    onRefresh();
-  };
-
-  const handleSaveNote = async () => {
-    await invoke("set_mod_note", { id: mod.id, note: noteValue });
-    setEditingNote(false);
-    onRefresh();
-  };
-
-  return (
-    <Draggable draggableId={mod.id} index={index}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          className={`glass-card p-3 flex flex-col gap-2 group transition-all duration-200 ${
-            snapshot.isDragging ? 'shadow-2xl border-accent/50 scale-[1.02] ring-2 ring-accent/30 z-50' : 'hover:border-white/20'
-          }`}
-          style={{ 
-            ...provided.draggableProps.style,
-            willChange: "transform, opacity",
-          }}
-        >
-          <div className="flex items-center gap-3">
-            {isActive && (
-              <div className="w-8 h-8 flex items-center justify-center bg-accent/20 rounded-md text-[10px] font-black text-accent shrink-0">
-                {index + 1}
-              </div>
-            )}
-            
-            <div className="w-12 h-12 rounded-lg bg-black/40 flex-shrink-0 overflow-hidden relative border border-white/5 shadow-inner">
-              {_imgCache[mod.id] ? (
-                <img src={_imgCache[mod.id]} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center opacity-30"><Folder size={20} /></div>
-              )}
-              {!mod.enabled && <div className="absolute inset-0 bg-black/60 backdrop-grayscale-[1]" />}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <div className="flex flex-col min-w-0">
-                  <h3 className={`text-sm font-bold truncate flex items-center gap-1.5 ${mod.enabled ? 'text-white' : 'text-muted-foreground'}`}>
-                    {mod.name}
-                    {mod.workshop_name && (
-                      <span title={`Workshop Title: ${mod.workshop_name}`} className="inline-flex items-center text-[8px] bg-blue-500/20 text-blue-400 px-1 rounded uppercase font-black">
-                        Steam
-                      </span>
-                    )}
-                    {mod.custom_tags?.includes("Third-Party") && (
-                      <span className="inline-flex items-center text-[8px] bg-purple-500/20 text-purple-400 px-1 rounded uppercase font-black">
-                        External
-                      </span>
-                    )}
-                    {mod.custom_tags?.includes("RJW Ecosystem") && (
-                      <span className="inline-flex items-center text-[8px] bg-pink-500/30 text-pink-400 px-1 rounded uppercase font-black animate-pulse">
-                        RJW
-                      </span>
-                    )}
-                    {mod.created_at > 0 && mod.source !== 'official' && (Date.now() / 1000 - mod.created_at) < 86400 && (
-                      <span className="inline-flex items-center text-[8px] bg-yellow-400 text-black px-1 rounded uppercase font-black animate-pulse shadow-[0_0_12px_rgba(250,204,21,0.6)] border border-white/40">
-                        NEW
-                      </span>
-                    )}
-                  </h3>
-                  {mod.workshop_name && mod.workshop_name !== mod.name && (
-                    <p className="text-[9px] text-blue-400/80 font-medium truncate mt-[-1px]">WS: {mod.workshop_name}</p>
-                  )}
-                  {mod.custom_note && !editingNote && (
-                    <p className="text-[10px] text-accent/80 italic truncate mt-[-2px]">{mod.custom_note}</p>
-                  )}
-                </div>
-                {modSizes[mod.id] && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${modSizes[mod.id].assets > 100000000 ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-muted-foreground'}`}>
-                    🖼️ {formatSize(modSizes[mod.id].assets)}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 overflow-hidden">
-                <span className={`text-[8px] uppercase font-black px-1 rounded border ${
-                  mod.source === 'workshop' ? 'border-blue-500/30 text-blue-400 bg-blue-500/5' : 
-                  mod.source === 'local' ? 'border-green-500/30 text-green-400 bg-green-500/5' : 
-                  'border-orange-500/30 text-orange-400 bg-orange-500/5'
-                }`}>
-                  {mod.source}
-                </span>
-                <span className="text-[10px] text-muted-foreground truncate opacity-60">by {mod.author || 'Unknown'}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-end shrink-0">
-              <span className="text-[10px] font-mono opacity-40">{formatSize(mod.size_bytes)}</span>
-              <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className={`p-1 rounded ${editingNote ? 'text-accent bg-accent/20' : 'hover:bg-white/10'}`} title="Edit Note" onClick={(e) => { e.stopPropagation(); setEditingNote(!editingNote); }}>
-                    <StickyNote size={12} />
-                  </button>
-                  <button className="p-1 hover:bg-white/10 rounded" title="Open Folder" onClick={(e) => { e.stopPropagation(); invoke("open_path_or_url", { target: mod.path }); }}><Folder size={12} /></button>
-                  <button className="p-1 hover:bg-red-500/20 text-red-400 rounded" title="Delete Mod" onClick={(e) => { e.stopPropagation(); if(confirm(`Delete ${mod.name}?`)) invoke("delete_mod", { id: mod.id }); }}><Trash2 size={12} /></button>
-              </div>
-            </div>
-          </div>
-
-          {/* Dependency Guard Alert */}
-          {mod.missing_dependencies?.length > 0 && (
-             <div className="mx-1 mt-1 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2">
-               <div className="w-6 h-6 rounded bg-red-500/20 flex items-center justify-center shrink-0">
-                 <LifeBuoy size={14} className="text-red-400 animate-pulse" />
-               </div>
-               <div className="flex-1 min-w-0">
-                 <div className="text-[10px] font-black text-red-400 uppercase tracking-tighter flex items-center gap-1.5">
-                   Dependency Guard <span className="w-1 h-1 rounded-full bg-red-500 animate-ping"></span>
-                 </div>
-                 <div className="text-[11px] text-red-300/90 leading-snug font-medium">
-                   Missing: <span className="text-white font-bold">{mod.missing_dependencies.join(", ")}</span>
-                 </div>
-                 <button 
-                  onClick={(e) => { 
-                    e.stopPropagation();
-                    const firstDep = mod.missing_dependencies[0];
-                    if (mod.source === 'workshop') {
-                      invoke("open_path_or_url", { target: `https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=${firstDep}` });
-                    } else {
-                      invoke("open_path_or_url", { target: `https://www.google.com/search?q=RimWorld+mod+packageid+${firstDep}` });
-                    }
-                  }}
-                  className="mt-1 text-[9px] font-bold text-red-400/60 hover:text-red-400 uppercase tracking-widest transition-colors"
-                 >
-                   {mod.source === 'workshop' ? "Search on Steam Workshop →" : "Find External Dependency →"}
-                 </button>
-               </div>
-             </div>
-          )}
-
-          {editingNote && (
-             <div className="px-1 animate-in fade-in slide-in-from-top-1">
-               <input 
-                 autoFocus
-                 className="w-full bg-black/40 border border-accent/30 rounded px-2 py-1 text-[10px] outline-none focus:border-accent shadow-inner"
-                 placeholder="Write a private note for this mod..."
-                 value={noteValue}
-                 onChange={e => setNoteValue(e.target.value)}
-                 onBlur={handleSaveNote}
-                 onKeyDown={e => e.key === 'Enter' && handleSaveNote()}
-               />
-             </div>
-          )}
-
-          {/* Tags Section */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-1 border-t border-white/5 pt-2">
-            {mod.custom_tags?.map(t => (
-              <span key={t} className="flex items-center gap-1 text-[9px] bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded-md group/tag">
-                {t}
-                <button onClick={() => removeTag(t)} className="opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-400">
-                  <X size={10} />
-                </button>
-              </span>
-            ))}
-            {addingTag ? (
-              <input 
-                autoFocus
-                className="bg-black/40 border border-accent/50 outline-none rounded px-1.5 py-0.5 text-[9px] w-20"
-                value={newTag}
-                onChange={e => setNewTag(e.target.value)}
-                onBlur={handleAddTag}
-                onKeyDown={e => e.key === 'Enter' && handleAddTag()}
-              />
-            ) : (
-              <button 
-                onClick={() => setAddingTag(true)}
-                className="flex items-center gap-1 text-[9px] text-muted-foreground hover:text-accent bg-white/5 hover:bg-accent/10 px-1.5 py-0.5 rounded-md transition-colors"
-              >
-                <Plus size={10} /> Tag
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </Draggable>
-  );
-});

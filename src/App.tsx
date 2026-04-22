@@ -137,38 +137,17 @@ export default function App() {
           flexShrink: 0,
           zIndex: 10,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{
-              fontSize: 12,
-              color: "var(--color-text-muted)",
-              background: "rgba(255,255,255,0.03)",
-              padding: "6px 12px",
-              borderRadius: "20px",
-              border: "1px solid var(--color-border)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}>
-              {paths?.game_dir
-                ? <><span className="pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--color-success)" }}></span> 📂 {paths.game_dir}</>
-                : <><span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--color-warning)" }}></span> ⚠ Path not set</>
-              }
+          <div className="flex items-center gap-16">
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider uppercase">Engine Status: Online</span>
             </div>
           </div>
-          <button
-            className="btn-primary"
-            onClick={async () => {
-              try { await invoke("launch_rimworld"); toast("RimWorld launched!", "success"); }
-              catch (e: any) { toast(e?.toString() || "Launch failed", "error"); }
-            }}
-          >
-            <span style={{ fontSize: 16 }}>▶</span> Launch RimWorld
-          </button>
         </header>
 
         {/* View content */}
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          <div className="main-view animate-slide-up" key={view}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div className="main-view animate-slide-up h-full flex flex-col overflow-hidden" key={view}>
             {error && view !== "settings" && (
               <div className="glass-card" style={{
                 padding: "20px 24px",
@@ -197,7 +176,7 @@ export default function App() {
             )}
 
             {view === "mods" && <ModsView mods={mods} onRefresh={refreshMods} toast={toast} />}
-            {view === "hub" && <ModHubView toast={toast} />}
+            {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} />}
             {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
             {view === "collections" && <CollectionsView mods={mods} toast={toast} onRefresh={refreshMods} />}
             {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}

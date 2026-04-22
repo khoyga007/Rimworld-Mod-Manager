@@ -35,22 +35,21 @@ impl CompressionFormat {
 }
 
 fn has_alpha_channel(path: &Path) -> bool {
-    // We only check PNGs for alpha to decide between BC1 and BC7/BC3
-    if let Ok(reader) = image::ImageReader::open(path) {
-        if let Some(format) = reader.format() {
-            if format == image::ImageFormat::Png {
-                // Re-open for decoding metadata
-                if let Ok(reader) = image::ImageReader::open(path) {
-                    if let Ok(guessed) = reader.with_guessed_format() {
-                        if let Ok(img) = guessed.decode() {
-                            return img.color().has_alpha();
-                        }
-                    }
-                }
+    // Optimization: Read only the IHDR chunk of PNG to check color type
+    // PNG Color Types: 4 (Gray+Alpha) and 6 (RGBA) have alpha channels.
+    if let Ok(mut file) = fs::File::open(path) {
+        use std::io::Read;
+        let mut header = [0u8; 33]; // PNG signature (8) + IHDR chunk (25)
+        if file.read_exact(&mut header).is_ok() {
+            if &header[0..8] == b"\x89PNG\r\n\x1a\n" {
+                // IHDR starts at byte 12 (length: 4, type: 4, width: 4, height: 4, bit depth: 1, color type: 1)
+                // Color type is at byte 25
+                let color_type = header[25];
+                return color_type == 4 || color_type == 6;
             }
         }
     }
-    true // Default to true (safe bet)
+    true // Default to true (safe bet for non-PNG or read failure)
 }
 
 pub fn emit_progress(app: &AppHandle, payload: OptimizeProgress) {
@@ -496,7 +495,6 @@ pub fn resize_mod_textures(
     }
 
     let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
-    let max_res_str = max_res.to_string();
 
     groups_vec.par_iter().for_each(|(parent, files)| {
         let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| has_alpha_channel(f));
@@ -504,32 +502,33 @@ pub fn resize_mod_textures(
         let process_group = |list: Vec<&PathBuf>, is_alpha: bool| {
             if list.is_empty() { return; }
             
-            let mut need_resize = Vec::new();
-            let mut only_compress = Vec::new();
-            
-            for f in list {
-                if let Ok((w, h)) = get_image_dimensions(f) {
-                    if w > max_res || h > max_res {
-                        need_resize.push(f);
-                    } else {
-                        only_compress.push(f);
-                    }
-                } else {
-                    need_resize.push(f);
-                }
-            }
-            
             let f_str = match format {
                 CompressionFormat::Smart => if is_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
                 _ => format.to_texconv_format(is_alpha),
             };
 
-            if !need_resize.is_empty() {
-                run_texconv_batch_resize(&app, &mod_info, &texconv, parent, &need_resize, f_str, &max_res_str, &completed, &failed_count, &resized_count, total);
-            }
-            if !only_compress.is_empty() {
-                run_texconv_batch(&app, &mod_info, &texconv, parent, &only_compress, f_str, &completed, &failed_count, total);
-                resized_count.fetch_add(only_compress.len(), std::sync::atomic::Ordering::Relaxed);
+            // To maintain aspect ratio, we can't batch files with different aspect ratios
+            // using the same -w -h. 
+            // So we process them individually or in small sub-groups if they need resize.
+            for f in list {
+                if let Ok((w, h)) = get_image_dimensions(f) {
+                    if w > max_res || h > max_res {
+                        // Calculate new dimensions preserving aspect ratio
+                        let (nw, nh) = if w > h {
+                            (max_res, (h * max_res) / w)
+                        } else {
+                            ((w * max_res) / h, max_res)
+                        };
+                        
+                        run_single_texconv_resize(&app, &mod_info, &texconv, parent, f, f_str, nw, nh, &completed, &failed_count, &resized_count, total);
+                    } else {
+                        // Just compress
+                        run_single_texconv_compress(&app, &mod_info, &texconv, parent, f, f_str, &completed, &failed_count, &resized_count, total);
+                    }
+                } else {
+                    failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         };
 
@@ -554,67 +553,118 @@ pub fn resize_mod_textures(
     Ok(())
 }
 
-fn run_texconv_batch_resize(
+fn run_single_texconv_resize(
     app: &AppHandle,
     mod_info: &ModInfo,
     texconv: &Path,
     parent: &Path,
-    files: &[&PathBuf],
+    file: &Path,
     format: &str,
-    max_res_str: &str,
+    nw: u32,
+    nh: u32,
     completed: &std::sync::atomic::AtomicUsize,
     failed_count: &std::sync::atomic::AtomicUsize,
     resized_count: &std::sync::atomic::AtomicUsize,
     total: usize,
 ) {
-    for chunk in files.chunks(50) {
-        let mut cmd = Command::new(texconv);
-        cmd.args([
-            "-f", format,
-            "-y",
-            "-vflip",
-            "-w", max_res_str,
-            "-h", max_res_str,
-            "-pow2",
-            "-m", "1",
-            "-if", "FANT",
-            "-gpu", "1",
-            "-o", &parent.to_string_lossy(),
-        ]);
+    let mut cmd = Command::new(texconv);
+    cmd.args([
+        "-f", format,
+        "-y",
+        "-vflip",
+        "-w", &nw.to_string(),
+        "-h", &nh.to_string(),
+        "-pow2",
+        "-m", "1",
+        "-if", "FANT",
+        "-gpu", "1",
+        "-o", &parent.to_string_lossy(),
+    ]);
+    cmd.arg(file);
 
-        for file in chunk {
-            cmd.arg(file);
-        }
-
-        if let Ok(output) = cmd.output() {
-            if output.status.success() {
-                for file in chunk {
-                    let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    if ext == "png" {
-                        let dds_path = file.with_extension("dds");
-                        if dds_path.exists() {
-                            let _ = fs::remove_file(file);
-                        }
-                    }
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "png" {
+                let dds_path = file.with_extension("dds");
+                if dds_path.exists() {
+                    let _ = fs::remove_file(file);
                 }
-                resized_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
-            } else {
-                failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
             }
+            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         } else {
-            failed_count.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed);
+            failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
+    } else {
+        failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 
-        let c = completed.fetch_add(chunk.len(), std::sync::atomic::Ordering::Relaxed) + chunk.len();
+    let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if c % 5 == 0 || c == total {
         let pct = ((c as f32 / total as f32) * 100.0) as u8;
         emit_progress(app, OptimizeProgress {
             mod_id: mod_info.id.clone(),
             status: "resizing".into(),
             progress: pct,
-            message: format!("Resizing {}/{} textures (max {}px)...", c, total, max_res_str),
+            message: format!("Resizing {}/{} textures...", c, total),
         });
     }
 }
+
+fn run_single_texconv_compress(
+    app: &AppHandle,
+    mod_info: &ModInfo,
+    texconv: &Path,
+    parent: &Path,
+    file: &Path,
+    format: &str,
+    completed: &std::sync::atomic::AtomicUsize,
+    failed_count: &std::sync::atomic::AtomicUsize,
+    resized_count: &std::sync::atomic::AtomicUsize,
+    total: usize,
+) {
+    let mut cmd = Command::new(texconv);
+    cmd.args([
+        "-f", format,
+        "-y",
+        "-vflip",
+        "-pow2",
+        "-m", "1",
+        "-if", "FANT",
+        "-gpu", "1",
+        "-o", &parent.to_string_lossy(),
+    ]);
+    cmd.arg(file);
+
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "png" {
+                let dds_path = file.with_extension("dds");
+                if dds_path.exists() {
+                    let _ = fs::remove_file(file);
+                }
+            }
+            resized_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    } else {
+        failed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let c = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if c % 5 == 0 || c == total {
+        let pct = ((c as f32 / total as f32) * 100.0) as u8;
+        emit_progress(app, OptimizeProgress {
+            mod_id: mod_info.id.clone(),
+            status: "optimizing".into(),
+            progress: pct,
+            message: format!("Optimizing {}/{} textures...", c, total),
+        });
+    }
+}
+
 
 /// Helper to quickly read DDS width/height from the 128-byte header
 /// Offset 12: height (u32), Offset 16: width (u32)

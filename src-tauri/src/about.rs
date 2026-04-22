@@ -2,6 +2,12 @@ use anyhow::Result;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Dependency {
+    pub package_id: String,
+    pub display_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ModAbout {
     pub package_id: String,
@@ -9,7 +15,7 @@ pub struct ModAbout {
     pub author: String,
     pub description: String,
     pub supported_versions: Vec<String>,
-    pub mod_dependencies: Vec<String>,
+    pub mod_dependencies: Vec<Dependency>,
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
     pub incompatible_with: Vec<String>,
@@ -57,8 +63,18 @@ pub fn parse_about(xml_content: &str) -> Result<ModAbout> {
                     about.description = txt;
                 } else if clean_path.contains("supportedVersions") && clean_path.ends_with("li") {
                     about.supported_versions.push(txt);
-                } else if clean_path.contains("modDependencies") && (clean_path.ends_with("packageId") || clean_path.ends_with("li")) {
-                    about.mod_dependencies.push(txt_lower);
+                } else if clean_path.contains("modDependencies") && clean_path.contains("li") {
+                    // Handling complex structured dependency
+                    if clean_path.ends_with("packageId") {
+                        about.mod_dependencies.push(Dependency { package_id: txt_lower, display_name: None });
+                    } else if clean_path.ends_with("displayName") {
+                        if let Some(last) = about.mod_dependencies.last_mut() {
+                            last.display_name = Some(txt);
+                        }
+                    } else if clean_path.ends_with("li") && !txt.contains('<') {
+                         // Simple string dependency fallback
+                         about.mod_dependencies.push(Dependency { package_id: txt_lower, display_name: None });
+                    }
                 } else if clean_path.contains("loadAfter") && clean_path.ends_with("li") {
                     about.load_after.push(txt_lower);
                 } else if clean_path.contains("loadBefore") && clean_path.ends_with("li") {

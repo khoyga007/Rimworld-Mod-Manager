@@ -1,3 +1,8 @@
+export interface Dependency {
+  package_id: string;
+  display_name?: string;
+}
+
 export interface ModInfo {
   id: string;
   name: string;
@@ -9,11 +14,11 @@ export interface ModInfo {
   custom_note: string;
   workshop_name?: string;
   created_at: number;
-  dependencies: string[];
+  dependencies: Dependency[];
   load_after: string[];
   load_before: string[];
   incompatible_with: string[];
-  missing_dependencies: string[];
+  missing_dependencies: Dependency[];
   picture?: string;
   path: string;
   descriptor_path: string;
