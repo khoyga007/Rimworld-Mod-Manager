@@ -6,6 +6,7 @@ import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided } 
 import { FixedSizeList as List } from "react-window";
 
 import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ModInfo, Preset } from "../types";
 
 // Global image cache
@@ -237,13 +238,9 @@ function VirtualRow({ index, style, data }: any) {
 }
 
 interface Props {
-  mods: ModInfo[];
-  onRefresh: () => void;
-  toast: (msg: string, type?: string) => void;
-}
-
-export default function ModsView({ mods, onRefresh, toast }: Props) {
-  const [modSearchText, setModSearchText] = useState("");
+export default function ModsView({ mods, onRefresh, toast }: { mods: ModInfo[], onRefresh: () => void, toast: (m: string, t?: string) => void }) {
+  const { t } = useTranslation();
+  const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [localActive, setLocalActive] = useState<ModInfo[]>([]);
   const [localInactive, setLocalInactive] = useState<ModInfo[]>([]);
@@ -613,7 +610,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
             <Search size={14} className="text-muted-foreground mr-2" />
             <input 
               className="bg-transparent border-none outline-none text-xs w-full placeholder:text-muted-foreground/50"
-              placeholder="Search mods..."
+              placeholder={t('mods.search_placeholder')}
               value={modSearchText}
               onChange={e => setModSearchText(e.target.value)}
             />
@@ -628,7 +625,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
               } catch (e: any) { toast(e.toString(), "error"); }
             }}
             className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground transition-all hover:rotate-180 duration-500"
-            title="Refresh Mod List"
+            title={t('common.refresh')}
           >
             <RefreshCw size={16} />
           </button>
@@ -644,7 +641,7 @@ export default function ModsView({ mods, onRefresh, toast }: Props) {
               !selectedTag ? 'bg-accent text-accent-foreground shadow-sm' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
             }`}
           >
-            All
+            {t('common.all') || 'All'}
           </button>
           {allTags.map(tag => (
             <button 

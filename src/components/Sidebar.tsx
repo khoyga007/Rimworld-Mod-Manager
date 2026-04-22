@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 
 type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
 
@@ -9,18 +10,25 @@ interface Props {
   gameDirSet: boolean;
 }
 
-const NAV: { id: View; icon: string; label: string }[] = [
-  { id: "mods", icon: "📦", label: "Mods" },
-  { id: "hub", icon: "✨", label: "Mod Hub" },
-  { id: "download", icon: "⬇", label: "Download" },
-  { id: "collections", icon: "📁", label: "Presets" },
-  { id: "loadorder", icon: "📊", label: "Load Order" },
-  { id: "saves", icon: "🏰", label: "Save Games" },
-  { id: "logs", icon: "📜", label: "Game Logs" },
-  { id: "settings", icon: "⚙", label: "Settings" },
-];
-
 export default function Sidebar({ currentView, onNavigate, modCount, enabledCount, gameDirSet }: Props) {
+  const { t, i18n } = useTranslation();
+
+  const NAV: { id: View; icon: string; label: string }[] = [
+    { id: "mods", icon: "📦", label: t('nav.mods') },
+    { id: "hub", icon: "✨", label: t('nav.mod_hub') },
+    { id: "download", icon: "⬇", label: t('nav.downloads') },
+    { id: "collections", icon: "📁", label: t('nav.collections') },
+    { id: "loadorder", icon: "📊", label: t('nav.load_order') },
+    { id: "saves", icon: "🏰", label: t('nav.save_games') },
+    { id: "logs", icon: "📜", label: t('nav.logs') },
+    { id: "settings", icon: "⚙", label: t('nav.settings') },
+  ];
+
+  const toggleLanguage = () => {
+    const nextLng = i18n.language === 'en' ? 'vi' : 'en';
+    i18n.changeLanguage(nextLng);
+  };
+
   return (
     <aside className="sidebar">
       {/* Brand */}
@@ -83,14 +91,33 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
         ))}
       </nav>
 
+      {/* Language Switcher */}
+      <div style={{ padding: "8px", borderTop: "1px solid var(--color-border)", marginTop: "auto" }}>
+        <button 
+          onClick={toggleLanguage}
+          className="btn-secondary"
+          style={{ 
+            width: "100%", 
+            fontSize: 11, 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center",
+            gap: 8,
+            padding: "8px"
+          }}
+        >
+          <span>🌐</span>
+          <span>{i18n.language === 'en' ? 'ENGLISH' : 'TIẾNG VIỆT'}</span>
+        </button>
+      </div>
+
       {/* Footer */}
       <div style={{
         padding: "16px",
         fontSize: 11,
         color: "var(--color-text-dim)",
         textAlign: "center",
-        borderTop: "1px solid var(--color-border)",
-        marginTop: "auto"
+        borderTop: "1px solid var(--color-border)"
       }}>
         <div style={{ fontWeight: 600, color: "var(--color-text-muted)" }}>v1.0.0-PRO</div>
         <div>Ready for A17+</div>

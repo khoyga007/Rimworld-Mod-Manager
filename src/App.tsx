@@ -11,10 +11,12 @@ import DownloadView from "./views/DownloadView";
 import CollectionsView from "./views/CollectionsView";
 import SaveGameView from "./views/SaveGameView";
 import { ModHubView } from "./views/ModHubView";
+import { useTranslation } from 'react-i18next';
 
 type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings";
 
 export default function App() {
+  const { t } = useTranslation();
   const [view, setView] = useState<View>("mods");
   const [paths, setPaths] = useState<RimWorldPaths | null>(null);
   const [mods, setMods] = useState<ModInfo[]>([]);
@@ -89,7 +91,7 @@ export default function App() {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 16 }}>
         <div style={{ width: 32, height: 32, border: "3px solid var(--color-border)", borderTop: "3px solid var(--color-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>Detecting RimWorld...</span>
+        <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{t('common.detecting_game')}</span>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -140,7 +142,7 @@ export default function App() {
           <div className="flex items-center gap-16">
             <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider uppercase">Engine Status: Online</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider uppercase">{t('common.status_online')}</span>
             </div>
           </div>
         </header>

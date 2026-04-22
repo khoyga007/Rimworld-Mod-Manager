@@ -1,0 +1,58 @@
+{
+  "common": {
+    "search": "Tìm kiếm",
+    "all": "Tất cả",
+    "save": "Lưu",
+    "refresh": "Làm mới",
+    "delete": "Xóa",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "loading": "Đang tải...",
+    "official": "Chính thức",
+    "workshop": "Workshop",
+    "local": "Nội bộ",
+    "other": "Khác",
+    "by": "bởi",
+    "unknown": "Không rõ",
+    "status_online": "Hệ thống: Sẵn sàng",
+    "detecting_game": "Đang tìm RimWorld...",
+    "status_idle": "Hệ thống: Rảnh rỗi",
+    "status_error": "Hệ thống: Lỗi",
+    "status_busy": "Hệ thống: Đang bận"
+  },
+  "nav": {
+    "mods": "Danh sách Mod",
+    "mod_hub": "Chợ Mod",
+    "load_order": "Thứ tự load",
+    "save_games": "File Save",
+    "logs": "Nhật ký (Log)",
+    "downloads": "Tải về",
+    "collections": "Bộ sưu tập",
+    "settings": "Cài đặt"
+  },
+  "mods": {
+    "active": "Đang dùng",
+    "inactive": "Chưa dùng",
+    "enable_all": "Bật tất cả",
+    "disable_all": "Tắt tất cả",
+    "launch_game": "Vào Game",
+    "optimize": "Tối ưu hóa",
+    "analyze_sizes": "Quét dung lượng",
+    "system_restore": "Hồi phục hệ thống",
+    "search_placeholder": "Tìm mod...",
+    "save_order": "Lưu thứ tự",
+    "select_profile": "Chọn Profile",
+    "new_profile": "Profile mới",
+    "optimization_complete": "Tối ưu hóa hoàn tất!",
+    "no_local_mods": "Không có mod nội bộ nào đang bật để tối ưu!"
+  },
+  "mod_hub": {
+    "title": "Trung tâm Mod",
+    "description": "Khám phá và cài đặt các bản mod từ cộng đồng.",
+    "installed": "Đã cài",
+    "install": "Cài đặt",
+    "installing": "Đang cài...",
+    "search_placeholder": "Tìm mod trên chợ...",
+    "select_provider": "Chọn nguồn tải"
+  }
+}

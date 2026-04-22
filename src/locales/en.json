@@ -1,0 +1,51 @@
+{
+  "common": {
+    "search": "Search",
+    "save": "Save",
+    "refresh": "Refresh",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "official": "Official",
+    "workshop": "Workshop",
+    "local": "Local",
+    "other": "Other",
+    "by": "by",
+    "unknown": "Unknown"
+  },
+  "nav": {
+    "mods": "Mods",
+    "mod_hub": "Mod Hub",
+    "load_order": "Load Order",
+    "save_games": "Save Games",
+    "logs": "Logs",
+    "downloads": "Downloads",
+    "collections": "Collections"
+  },
+  "mods": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "enable_all": "Enable All",
+    "disable_all": "Disable All",
+    "launch_game": "Launch Game",
+    "optimize": "Optimize",
+    "analyze_sizes": "Analyze Sizes",
+    "system_restore": "System Restore",
+    "search_placeholder": "Search mods...",
+    "save_order": "Save Order",
+    "select_profile": "Select Profile",
+    "new_profile": "New Profile",
+    "optimization_complete": "Optimization complete!",
+    "no_local_mods": "No local mods active to optimize!"
+  },
+  "mod_hub": {
+    "title": "Mod Hub",
+    "description": "Discover and install community creations from multiple providers.",
+    "installed": "Installed",
+    "install": "Install",
+    "installing": "Installing...",
+    "search_placeholder": "Search community mods...",
+    "select_provider": "Select Provider"
+  }
+}
