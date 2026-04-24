@@ -15,7 +15,9 @@ pub struct SteamDatabase {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct SteamEntry {
-    #[serde(rename = "packageid")]
+    // RimSort's steamDB.json uses `packageId` (camelCase) on most entries but some
+    // legacy entries also include `packageid` (all lowercase). Accept both.
+    #[serde(alias = "packageId", alias = "packageid")]
     pub package_id: Option<String>,
     #[allow(dead_code)]
     pub name: Option<String>,

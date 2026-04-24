@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.8] - 2026-04-24
+
+### Fixed
+- **Steam DB Field Name**: The `SteamEntry` deserializer was keyed on `packageid` (all lowercase). RimSort's Steam Workshop Database actually uses `packageId` (camelCase) on the vast majority of entries, so the reverse map came out empty and Auto-Install Missing reported every dependency as unresolved. The field now accepts both spellings via `serde(alias)`.
+
 ## [0.5.7] - 2026-04-24
 
 ### Added
