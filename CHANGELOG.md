@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-04-24
+
+### Fixed
+- **CI Build Failure**: All three matrix jobs (Windows, Linux, macOS) on v0.6.0 failed because `tsc` treats unused imports as errors and a stale `CustomTag` type import remained in `ModsView.tsx`. Local dev builds skip type-check, so this only surfaced on CI. Removed the unused import.
+
 ## [0.6.0] - 2026-04-24
 
 ### Added

@@ -8,7 +8,7 @@ import { FixedSizeList as List } from "react-window";
 import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Wand2, Bomb, Undo2, Upload, CheckSquare, Square, Download } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
-import type { CustomTag, ModInfo, PerformanceLevel, Preset } from "../types";
+import type { ModInfo, PerformanceLevel, Preset } from "../types";
 import CustomDialog from "../components/CustomDialog";
 
 // Global image cache
