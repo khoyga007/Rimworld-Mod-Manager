@@ -196,7 +196,20 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
     let mut deps: HashMap<String, Vec<String>> = HashMap::new();
     let mut in_degree: HashMap<String, usize> = enabled.iter().map(|m| (m.id.clone(), 0)).collect();
     let rimpy = load_rimpy_rules();
+    let steam_map = crate::steam_db::load_pfid_to_packageid();
     let mut issues: Vec<LoadOrderIssue> = Vec::new();
+
+    // Resolve a dependency reference that may be a package_id OR a published_file_id
+    // into a lowercase package_id. Falls back to the raw input when Steam DB has no match.
+    let resolve_ref = |raw: &str| -> String {
+        let lower = raw.to_lowercase();
+        if crate::steam_db::is_pfid(raw) {
+            if let Some(pkg) = steam_map.get(raw) {
+                return pkg.clone();
+            }
+        }
+        lower
+    };
 
     for m in &enabled {
         let mut la = m.load_after.clone();
@@ -214,7 +227,8 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
 
         // Hard dependencies first — emit MissingDependency when target not installed/enabled.
         for d in &m.dependencies {
-            match id_lookup.get(&d.package_id.to_lowercase()) {
+            let resolved = resolve_ref(&d.package_id);
+            match id_lookup.get(&resolved) {
                 Some(dep_id) if dep_id != &m.id => {
                     deps.entry(dep_id.clone()).or_default().push(m.id.clone());
                     *in_degree.entry(m.id.clone()).or_insert(0) += 1;
@@ -231,7 +245,8 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
         }
         // Soft loadAfter edges (no missing-dep issue — these are hints).
         for dep in &la {
-            if let Some(dep_id) = id_lookup.get(&dep.to_lowercase()) {
+            let resolved = resolve_ref(dep);
+            if let Some(dep_id) = id_lookup.get(&resolved) {
                 if dep_id != &m.id {
                     deps.entry(dep_id.clone()).or_default().push(m.id.clone());
                     *in_degree.entry(m.id.clone()).or_insert(0) += 1;
@@ -239,7 +254,8 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
             }
         }
         for dep in &lb {
-            if let Some(dep_id) = id_lookup.get(&dep.to_lowercase()) {
+            let resolved = resolve_ref(dep);
+            if let Some(dep_id) = id_lookup.get(&resolved) {
                 if dep_id != &m.id {
                     deps.entry(m.id.clone()).or_default().push(dep_id.clone());
                     *in_degree.entry(dep_id.clone()).or_insert(0) += 1;
@@ -254,7 +270,8 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
         if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
             if let Some(incs) = &rule.incompatible_with {
                 for other_key in incs.keys() {
-                    if let Some(other_id) = id_lookup.get(&other_key.to_lowercase()) {
+                    let resolved = resolve_ref(other_key);
+                    if let Some(other_id) = id_lookup.get(&resolved) {
                         if other_id == &m.id { continue; }
                         let (a, b) = if m.id <= *other_id { (m.id.clone(), other_id.clone()) } else { (other_id.clone(), m.id.clone()) };
                         if seen_incompat.insert((a.clone(), b.clone())) {

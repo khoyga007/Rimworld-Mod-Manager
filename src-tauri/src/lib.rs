@@ -7,6 +7,7 @@ mod mods;
 mod paths;
 mod savegame;
 mod size_analysis;
+mod steam_db;
 mod steamcmd;
 mod updates;
 mod workshop;
@@ -881,6 +882,22 @@ async fn update_community_rules() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn update_steam_db() -> Result<(), String> {
+    let url = "https://raw.githubusercontent.com/RimSort/Steam-Workshop-Database/main/steamDB.json";
+    let client = reqwest::Client::builder()
+        .user_agent("RimWorldModManager/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let text = res.text().await.map_err(|e| e.to_string())?;
+
+    let path = paths::config_dir().join("steamDB.json");
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ---------- Updates ----------
 #[tauri::command]
 async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<updates::UpdateStatus>, String> {
@@ -1254,6 +1271,7 @@ pub fn run() {
             list_save_games,
             analyze_save_game,
             update_community_rules,
+            update_steam_db,
             read_mod_image,
             resize_mod_textures,
             resize_all_local_mods,

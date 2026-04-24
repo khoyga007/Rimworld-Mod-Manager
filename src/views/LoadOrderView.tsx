@@ -80,6 +80,20 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
     }
   };
 
+  const updateSteamDb = async () => {
+    try {
+      setLoading(true);
+      toast("Updating Steam Workshop DB...", "info");
+      await invoke("update_steam_db");
+      toast("Steam DB updated!", "success");
+      if (analysis) analyzeOrder();
+    } catch (e: any) {
+      toast(e?.toString() || t('common.error'), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const saveManualOrder = async () => {
     if (!localOrder) return;
     try {
@@ -184,6 +198,9 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
           </button>
           <button className="btn-secondary" onClick={updateCommunityRules} disabled={loading} title={t('load_order.update_rules_desc')}>
             🌐 {t('load_order.update_rules')}
+          </button>
+          <button className="btn-secondary" onClick={updateSteamDb} disabled={loading} title="Download Steam Workshop DB (maps workshop IDs to package IDs for accurate dependency resolution)">
+            🛠 Steam DB
           </button>
           <button className="btn-primary" onClick={applySort} disabled={loading}>
             ⚡ {t('load_order.apply_auto')}

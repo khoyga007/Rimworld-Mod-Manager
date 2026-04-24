@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.6] - 2026-04-24
+
+### Added
+- **Steam Workshop DB Integration**: RimPro now downloads and uses the RimSort Steam Workshop Database to resolve dependency references that point at numeric `publishedFileId` values. This closes the last gap in dependency resolution versus RimSort and means auto-sort correctly orders mods that declare their dependencies by Steam Workshop ID instead of `packageId`.
+- **Steam DB Button**: New button in the Load Order toolbar to fetch/refresh the Steam DB cache on demand.
+
 ## [0.5.5] - 2026-04-24
 
 ### Added
