@@ -1,98 +1,157 @@
-# 🚀 RIMPRO
+# RimPro — RimWorld Mod Manager
 
-A high-performance, professional-grade mod manager for RimWorld. Engineered with **Rust** and **Tauri** for maximum safety, reliability, and speed. Works seamlessly with both Steam and offline/non-Steam builds.
+A modern, performance-focused mod manager for RimWorld. Built with Rust (Tauri 2) + React 19.
 
-![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react) ![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) ![Performance](https://img.shields.io/badge/Performance-Ultra--Fast-success)
+Windows, Linux, and macOS (universal) installers are published on every release.
 
----
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react) ![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 
-## ⚡ Key Highlights (v0.5.x)
-
-- **GPU Accelerated Texture Optimization**: Convert PNGs to high-quality DDS using `texconv` with hardware acceleration. Transform compression time from **hours to seconds**.
-- **Smart VRAM Analysis**: Instantly identify "heavy" mods with high texture density. Highlights mods consuming >100MB of VRAM to help prioritize optimization.
-- **Incremental Incremental Logic**: Built-in skip logic that detects already-optimized textures, making subsequent runs near-instant.
-- **Instant Loading Cache**: Powered by a thread-safe Rust backend cache. Manage thousands of mods with **zero lag**.
-- **Smart Mod Attribution**: Automatically categorizes mods by source (**Official**, **Workshop**, **Local**, **Other**) with a clear UI identification system.
-- **Atomic Reliability**: Guaranteed integrity for `ModsConfig.xml` using atomic write operations and automatic backups.
+> Repo slug is `Rimworld-Mod-Manager` for history reasons. The app brand is **RimPro**.
 
 ---
 
-## 📦 Main Features
+## Highlights
 
-### 🎮 Mod Management & Optimization
-- **Smart Resize Wizard**: Target specific heavy mods for downscaling (512px, 1024px, 2048px). Reduces VRAM footprint by up to 80% while maintaining visual fidelity.
-- **Texture Optimizer**: GPU-based PNG to DDS conversion. Fixes flipped textures, generates mipmaps, and drastically reduces game load times.
-- **VRAM Badge System**: View real-time texture size metrics on every mod card to identify performance bottlenecks.
-- **Source Badges**: Instantly identify where your mods came from for better organization.
-- **Batch Actions**: Enable, disable, optimize, or backup entire libraries in seconds.
-- **Protection Layer**: Core and DLC mods are protected from accidental modifications.
+### Load order
+- **Community-rules auto-sort** — pulls the same `communityRules.json` that RimSort uses, runs a full DAG topological sort (Kahn's algorithm), honors bucket ordering (Harmony → Core → DLCs → Libraries → Total Conversion → Map/Biomes → Race → General → Animation → UI → Patch → Performance), and enforces anchor edges.
+- **Steam Workshop DB integration** — fetches RimSort's `steamDB.json` and resolves dependencies declared by numeric `publishedFileId` to the correct `packageId` before sorting. Closes the last resolution gap vs. RimSort.
+- **Custom rules editor** — per-mod `loadAfter` / `loadBefore` / pin-to-top / pin-to-bottom overrides. Saved to `customRules.json`, merged on top of the community rules so your overrides always win.
+- **Alphabetical mode** — one-click A-Z sort with Core + DLCs pinned at the top.
+- **Dependency analyzer** — missing deps, cycles, incompatibilities, and out-of-order mods are all surfaced with fixable suggestions.
+- **Auto-install missing** — resolves every missing `packageId` against the Steam DB, queues the matching Workshop IDs through SteamCMD. Reports what it couldn't find.
+- **Manual drag-and-drop** with local-edit / save / discard flow.
 
-### 📊 Advanced Load Order
-- **Smart Sort Engine**: Hybrid DAG + bucket topological sort based on RimPy-compatible community rules. Handles complex dependencies, load-after/before logic, and automatic category grouping (Harmony → Core → Libraries → Patches).
-- **Conflict Detection**: Real-time analysis of missing dependencies, circular cycles, and load order issues.
-- **Drag & Drop**: Intuitive management of your active mod list.
+### Mod library
+- **Deep thumbnail search** — scans `About/`, `Textures/`, etc. for any image containing `preview` in the name, so third-party mods that don't ship a `Preview.png` still get thumbnails.
+- **Mod Hub** — browse + install from curated manifests, with robust installed-state detection (normalized name + ID comparison).
+- **Size analysis** — visual breakdown of every mod's on-disk footprint, highlights VRAM-heavy texture mods.
+- **Tags, notes, per-mod preview override**.
+- **Bulk enable/disable with local-edit buffer** — nothing is written to `ModsConfig.xml` until you Save.
 
-### ⬇️ Workshop Downloader
-- **SteamCMD Integration**: Download mods anonymously without needing a Steam account.
-- **Mirror Fallbacks**: Automatic fallback to web mirrors if SteamCMD is restricted by your ISP.
-- **Collection Importer**: One-click download for entire Workshop collections.
+### Texture optimization
+`texconv.exe` (Microsoft DirectXTex) is invoked in parallel via `rayon` to transcode PNGs to DDS. Mip generation is forced off (`-m 1`) and BC block compression cuts VRAM 4–8×.
 
-### 🏰 Save & Log Tools
-- **Save Analyzer**: Detect missing mods in your save files and enable them instantly.
-- **Live Logs**: Real-time `Player.log` viewer with severity filtering and search.
+Three formats in the toolbar dropdown:
+
+| Format | Compression | VRAM vs. raw PNG | Quality |
+|--------|-------------|------------------|---------|
+| **BC1** | Fixed 6:1 | 1/8 | Good for opaque textures |
+| **BC7** | Fixed 4:1 | 1/4 | Best; same size as BC3, better quality |
+| **SMART** (default) | Per-file heuristic | Varies | **Auto-picks** |
+
+Smart mode resolves per file:
+- `_normal`, `_nrm`, `_norm`, `normalmap` in the filename → **BC5** (two-channel, clean normals)
+- Has alpha channel → **BC7** (best quality)
+- Opaque → **BC1** (half the VRAM of BC7)
+
+Applies equally to per-mod **Optimize** and batch **Optimize All** / **Resize All**. Textures are flipped with `-vflip` so Unity / RimWorld orientation is correct (fixes the classic upside-down tree bug).
+
+### Saves & backups
+- **Save-game analyzer** — parses `.rws` files, lists mods referenced by the save, flags missing ones.
+- **ModsConfig backups** — every destructive action auto-backs up. Restore via Settings.
+
+### Performance
+- **React virtualization** (`react-window`) on every long list.
+- **Debounced search** for large libraries.
+- **Thumbnail prefetch follows visible rows only** — no more eager loading 1000+ images.
+- **Performance Mode toggle** + separate **Disable Thumbnails** option for low-end PCs. Auto-suggested when a very large library is detected.
 
 ---
 
-## 📥 Download
+## Install
 
-Grab the latest release from the [**GitHub Releases**](https://github.com/khoyga007/Rimworld-Mod-Manager/releases/latest) page. Just download the `.exe` and run!
+### Pre-built binaries (recommended)
 
----
+Grab the installer for your platform from [Releases](../../releases/latest):
 
-## 🛠️ Development (Quick Start)
+| Platform | Installer |
+|----------|-----------|
+| Windows  | `.msi` or `.exe` (NSIS) |
+| Linux    | `.deb`, `.rpm`, or `.AppImage` |
+| macOS    | `.dmg` (universal: Intel + Apple Silicon) |
 
-The easiest way to get started is to use our **Quick Start helper**:
-1. **Clone** the repository.
-2. **Run `QuickStart.bat`**. It will automatically check for Node.js/Rust, install dependencies, and launch the app in dev mode.
+### Linux runtime deps
 
-Alternatively, via CLI:
+Ubuntu/Debian:
 ```bash
-# Prerequisites: Node 20+, Rust stable
-git clone https://github.com/khoyga007/Rimworld-Mod-Manager.git
-cd Rimworld-Mod-Manager
-npm install
-npm run tauri dev
+sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libappindicator3-1 librsvg2-2
 ```
 
 ---
 
-<a name="tiếng-việt"></a>
-# 🇻🇳 RIMPRO (Tiếng Việt)
+## Build from source
 
-Trình quản lý Mod chuyên nghiệp, hiệu năng cao dành cho RimWorld. Được xây dựng dựa trên nền tảng **Rust** và **Tauri**, mang lại sự an toàn tuyệt đối cho file cấu hình và tốc độ xử lý vượt trội.
+Requires Rust (stable), Node 20+, and platform-specific Tauri prerequisites: <https://tauri.app/start/prerequisites/>.
 
-### ✨ Những tính năng nổi bật
-*   **Tối ưu ảnh bằng GPU**: Sử dụng sức mạnh card đồ họa để nén ảnh mod sang chuẩn DDS. Rút ngắn thời gian từ hàng tiếng đồng hồ xuống còn **vài giây**.
-*   **Phân tích & Tối ưu VRAM**: Hệ thống quét dung lượng ảnh thông minh, tự động cảnh báo các Mod "ngốn" VRAM (>100MB) để anh em dễ dàng Resize và giải phóng bộ nhớ card đồ họa.
-*   **Resize "đánh trọng điểm"**: Cho phép Resize lẻ từng Mod theo độ phân giải (512px, 1024px, 2048px). Giảm đến 80% dung lượng ảnh mà vẫn giữ được độ sắc nét.
-*   **Xử lý gia tăng (Incremental)**: Tự động phát hiện và bỏ qua các file đã được tối ưu, giúp các lần chạy sau diễn ra gần như tức thì.
-*   **Hệ thống Cache siêu tốc**: Danh sách mod nạp lên ngay lập tức nhờ bộ nhớ đệm thông minh.
+```bash
+git clone https://github.com/khoyga007/Rimworld-Mod-Manager.git
+cd Rimworld-Mod-Manager
+npm ci --legacy-peer-deps
+npm run tauri dev      # hot-reload dev build
+npm run tauri build    # production installer into src-tauri/target/release/bundle
+```
 
-### 🚀 Tải về
-Vào trang [**Releases**](https://github.com/khoyga007/Rimworld-Mod-Manager/releases/latest) và tải file `.exe` mới nhất để sử dụng ngay.
-
-## 🛠️ Dành cho Developer (Chạy bản nguồn)
-
-Cách nhanh nhất để chạy bản nguồn là dùng file hỗ trợ cài đặt tự động:
-1. **Clone** repository về máy.
-2. **Chạy file `QuickStart.bat`**. Nó sẽ tự kiểm tra môi trường (Node.js, Rust), cài thư viện và khởi động app cho bạn.
+Linux extras:
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+                 patchelf libgtk-3-dev libssl-dev build-essential curl wget file
+```
 
 ---
 
-## 📜 License & Credits
-- **Author**: Yang (khoyga007)
-- **Tech**: Built with Tauri, React, and Rust.
-- **Sorting Rules**: Compatible with community-driven rulesets.
+## How auto-sort works (short version)
+
+1. Load all mods, keep the ones that are either enabled or are Core/DLCs.
+2. Load community rules from `communityRules.json` (RimSort feed), custom rules from `customRules.json`, and the Steam DB for numeric-ID resolution.
+3. For each mod, collect hard dependencies → emit `MissingDependency` if the target isn't installed, otherwise add a DAG edge.
+4. Collect soft `loadAfter` / `loadBefore` edges from the mod's About.xml **plus** both rule sources. Numeric `publishedFileId` references are resolved to `packageId` via the Steam DB before matching.
+5. Enforce anchor edges (Core before every DLC, DLCs in Ludeon's canonical order).
+6. Kahn's algorithm: pull zero-in-degree mods, tie-break by bucket order → DLC weight → original load order → alphabetical name.
+7. Anything with residual in-degree is stuck in a cycle — emit `Cycle` issue and append at the end.
+
+Total runtime on a 500-mod list: sub-second.
 
 ---
-*RimWorld is a trademark of Ludeon Studios. This tool is not affiliated with Ludeon Studios.*
+
+## Project layout
+
+```
+src/              # React 19 + TypeScript frontend
+  components/     # Reusable UI (CustomRulesModal, CustomDialog, etc.)
+  views/          # Top-level pages (ModsView, LoadOrderView, SaveGamesView, ...)
+  types/          # Shared TS types mirrored from Rust structs
+src-tauri/
+  src/
+    auto_sort.rs      # DAG topo sort, bucket classification, anchor edges
+    custom_rules.rs   # User-authored rule persistence
+    steam_db.rs       # pfid <-> packageId resolution
+    steamcmd.rs       # SteamCMD integration for Workshop downloads
+    optimize.rs       # texconv pipeline, Smart format heuristic
+    mods.rs           # About.xml parsing, ModsConfig read/write
+    savegame.rs       # .rws analyzer
+    ...
+  tauri.conf.json
+  Cargo.toml
+.github/workflows/release.yml  # matrix CI: Windows + Linux + macOS
+```
+
+---
+
+## Release / CI
+
+Pushing to `main` with a bumped version triggers `.github/workflows/release.yml`:
+
+1. **Prepare** — verifies `package.json` version matches `tauri.conf.json`, checks whether a release for that tag already exists, creates the git tag if not.
+2. **Build matrix** — `windows-latest`, `ubuntu-22.04`, `macos-latest` run in parallel. Each invokes `tauri-action`, which compiles, packages, and uploads its installer to the same GitHub Release.
+
+To cut a release, bump the three version fields (`package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`), commit, push. The rest is automatic.
+
+---
+
+## Credits
+
+- **[RimSort](https://github.com/RimSort/RimSort)** — the community rules and Steam Workshop DB feeds this app consumes are maintained by the RimSort team. Full credit to them for the data.
+- **[Tauri](https://tauri.app/)** — Rust + webview app shell.
+- **[DirectXTex / texconv](https://github.com/microsoft/DirectXTex)** — BC block compression pipeline.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
