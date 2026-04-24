@@ -29,8 +29,36 @@ impl CompressionFormat {
         match self {
             CompressionFormat::Bc7 => "BC7_UNORM",
             CompressionFormat::Bc1 => if has_alpha { "BC3_UNORM" } else { "BC1_UNORM" },
-            CompressionFormat::Smart => if has_alpha { "BC3_UNORM" } else { "BC1_UNORM" },
+            // Fallback only; callers with path context should use resolve_format.
+            CompressionFormat::Smart => if has_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
         }
+    }
+}
+
+/// Smart format per-file heuristic. Inspect filename + alpha to pick best codec.
+///   - Normal map (name ends `_normal`, `_nrm`, `_norm`, or contains `normalmap`) → BC5_UNORM
+///   - Alpha channel present → BC7_UNORM (best quality, same VRAM as BC3)
+///   - No alpha → BC1_UNORM (half VRAM of BC7, good enough for opaque sprites)
+fn smart_format(path: &Path, has_alpha: bool) -> &'static str {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if stem.ends_with("_normal")
+        || stem.ends_with("_nrm")
+        || stem.ends_with("_norm")
+        || stem.contains("normalmap")
+    {
+        return "BC5_UNORM";
+    }
+    if has_alpha { "BC7_UNORM" } else { "BC1_UNORM" }
+}
+
+fn resolve_format(fmt: CompressionFormat, path: &Path, has_alpha: bool) -> &'static str {
+    match fmt {
+        CompressionFormat::Smart => smart_format(path, has_alpha),
+        _ => fmt.to_texconv_format(has_alpha),
     }
 }
 
@@ -317,12 +345,17 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
     
     groups_vec.par_iter().for_each(|(parent, files)| {
-        let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
-        if !with_alpha.is_empty() {
-            run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, format.to_texconv_format(true), &completed, &failed_count, total);
+        // Group files within this directory by the resolved texconv format so Smart
+        // can pick a different codec per file (BC5 for normal maps, BC7 for alpha, BC1 otherwise).
+        let mut by_format: std::collections::HashMap<&'static str, Vec<&PathBuf>> =
+            std::collections::HashMap::new();
+        for f in files.iter() {
+            let has_alpha = texture_has_alpha_channel(f);
+            let fmt_str = resolve_format(format, f, has_alpha);
+            by_format.entry(fmt_str).or_default().push(f);
         }
-        if !no_alpha.is_empty() {
-            run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, format.to_texconv_format(false), &completed, &failed_count, total);
+        for (fmt_str, list) in by_format {
+            run_texconv_batch(&app, &mod_info, &texconv, parent, &list, fmt_str, &completed, &failed_count, total);
         }
     });
 
@@ -687,13 +720,10 @@ pub fn resize_mod_textures(
 
         let process_group = |list: Vec<&PathBuf>, is_alpha: bool| {
             if list.is_empty() { return; }
-            
-            let f_str = match format {
-                CompressionFormat::Smart => if is_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
-                _ => format.to_texconv_format(is_alpha),
-            };
 
             for f in list {
+                // Resolve per file so Smart can apply filename-based heuristics (e.g. normal maps).
+                let f_str = resolve_format(format, f, is_alpha);
                 if let Ok((w, h)) = get_image_dimensions(f) {
                     if w > max_res || h > max_res {
                         let (nw, nh) = if w > h {

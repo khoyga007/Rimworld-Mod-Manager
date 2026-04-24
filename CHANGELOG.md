@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.5] - 2026-04-24
+
+### Added
+- **Compression Format Selector**: New toolbar dropdown in the Mods view lets you pick `SMART`, `BC7`, or `BC1` for both Optimize and Resize. The selection now applies to per-mod buttons as well as the batch "Optimize All" / "Resize All" actions.
+
+### Changed
+- **Smart Compression Is Actually Smart**: The `smart` format now resolves per-file instead of falling through to BC1. It detects normal maps by filename (`_normal`, `_nrm`, `_norm`, `normalmap`) and encodes them as BC5, uses BC7 for textures with alpha (best quality, same VRAM as BC3), and keeps BC1 for opaque textures (half the VRAM of BC7). Behaviour is now consistent between Optimize and Resize paths.
+
 ## [0.5.2] - 2026-04-22
 
 ### Added

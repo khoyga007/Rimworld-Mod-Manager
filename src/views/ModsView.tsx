@@ -134,32 +134,36 @@ function processImgQueue(onLoaded: () => void) {
   }
 }
 
-const ModCard = memo(({ 
-  mod, 
-  index, 
-  isActive, 
+const ModCard = memo(({
+  mod,
+  index,
+  isActive,
   showThumbnail,
   ultraPerformance,
   provided,
   isDragging,
   dragWidth,
-  formatSize, 
-  onRefresh, 
+  formatSize,
+  onRefresh,
   toast,
-  onToggle 
-}: { 
-  mod: ModInfo, 
-  index: number, 
-  isActive?: boolean, 
+  onToggle,
+  compressionFormat,
+  resizeRes
+}: {
+  mod: ModInfo,
+  index: number,
+  isActive?: boolean,
   showThumbnail: boolean,
   ultraPerformance: boolean,
   provided?: DraggableProvided,
   isDragging?: boolean,
   dragWidth?: number,
-  formatSize: any, 
-  onRefresh: any, 
+  formatSize: any,
+  onRefresh: any,
   toast: (msg: string, type?: string) => void,
-  onToggle: (mod: ModInfo) => void 
+  onToggle: (mod: ModInfo) => void,
+  compressionFormat: "smart" | "bc7" | "bc1",
+  resizeRes: number
 }) => {
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(mod.custom_note || "");
@@ -339,21 +343,21 @@ const ModCard = memo(({
               onClick={async (e) => {
                 e.stopPropagation();
                 try {
-                  await invoke("optimize_mod_textures", { id: mod.id, format: "smart" });
+                  await invoke("optimize_mod_textures", { id: mod.id, format: compressionFormat });
                   toast("Optimized!", "success");
                   onRefresh();
                 } catch (err: any) { toast(err.toString(), "error"); }
               }}
-              className="p-1 hover:bg-white/10 text-emerald-400 rounded shrink-0" 
+              className="p-1 hover:bg-white/10 text-emerald-400 rounded shrink-0"
               title="Optimize Textures (DDS)"
             >
               <Scaling size={14} />
             </button>
-            <button 
+            <button
               onClick={async (e) => {
                 e.stopPropagation();
                 try {
-                  await invoke("resize_mod_textures", { id: mod.id, maxRes: 1024, format: "smart" });
+                  await invoke("resize_mod_textures", { id: mod.id, maxRes: resizeRes, format: compressionFormat });
                   toast("Resized!", "success");
                   onRefresh();
                 } catch (err: any) { toast(err.toString(), "error"); }
@@ -506,20 +510,20 @@ const ModCard = memo(({
               <button 
                 onClick={async () => {
                   try {
-                    await invoke("optimize_mod_textures", { id: mod.id, format: "smart" });
+                    await invoke("optimize_mod_textures", { id: mod.id, format: compressionFormat });
                     toast("Optimized!", "success");
                     onRefresh();
                   } catch (e: any) { toast(e.toString(), "error"); }
                 }}
-                className="p-1 hover:bg-white/10 text-emerald-400 rounded" 
+                className="p-1 hover:bg-white/10 text-emerald-400 rounded"
                 title="Optimize Textures (DDS)"
               >
                 <Scaling size={12} />
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   try {
-                    await invoke("resize_mod_textures", { id: mod.id, maxRes: 1024, format: "smart" });
+                    await invoke("resize_mod_textures", { id: mod.id, maxRes: resizeRes, format: compressionFormat });
                     toast("Resized!", "success");
                     onRefresh();
                   } catch (e: any) { toast(e.toString(), "error"); }
@@ -634,6 +638,8 @@ function VirtualRow({ index, style, data }: any) {
             onRefresh={data.onRefresh}
             toast={data.toast}
             onToggle={data.onToggle}
+            compressionFormat={data.compressionFormat}
+            resizeRes={data.resizeRes}
           />
         )}
       </Draggable>
@@ -657,6 +663,8 @@ function PlainVirtualRow({ index, style, data }: any) {
         onRefresh={data.onRefresh}
         toast={data.toast}
         onToggle={data.onToggle}
+        compressionFormat={data.compressionFormat}
+        resizeRes={data.resizeRes}
       />
     </div>
   );
@@ -1120,10 +1128,12 @@ export default function ModsView({
           onRefresh={onRefresh}
           toast={toast}
           onToggle={() => {}}
+          compressionFormat={compressionFormat}
+          resizeRes={resizeRes}
         />
       </div>
     );
-  }, [formatSize, onRefresh, showThumbnail, toast, ultraPerformance]);
+  }, [formatSize, onRefresh, showThumbnail, toast, ultraPerformance, compressionFormat, resizeRes]);
   const inactiveListData = useMemo(() => ({
     list: filteredInactive,
     imgVer,
@@ -1133,12 +1143,14 @@ export default function ModsView({
     showThumbnail,
     ultraPerformance,
     dragDisabled,
+    compressionFormat,
+    resizeRes,
     onToggle: (mod: ModInfo) => {
       setLocalInactive(prev => prev.filter(m => m.id !== mod.id));
       setLocalActive(prev => [...prev, { ...mod, enabled: true }]);
       setDirty(true);
     }
-  }), [filteredInactive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
+  }), [filteredInactive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled, compressionFormat, resizeRes]);
   const activeListData = useMemo(() => ({
     list: filteredActive,
     imgVer,
@@ -1149,6 +1161,8 @@ export default function ModsView({
     showThumbnail,
     ultraPerformance,
     dragDisabled,
+    compressionFormat,
+    resizeRes,
     onToggle: (mod: ModInfo) => {
       if (mod.source === "official" || mod.author === "Ludeon Studios") {
         toast("Cannot disable official game content!", "warning");
@@ -1158,7 +1172,7 @@ export default function ModsView({
       setLocalInactive(prev => [{ ...mod, enabled: false }, ...prev]);
       setDirty(true);
     }
-  }), [filteredActive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled]);
+  }), [filteredActive, imgVer, formatSize, onRefresh, toast, showThumbnail, ultraPerformance, dragDisabled, compressionFormat, resizeRes]);
 
   // Image lazy loading aligned with virtualized visible ranges
   useEffect(() => {
@@ -1313,7 +1327,19 @@ export default function ModsView({
 
           {/* Texture Optimization Cluster */}
           <div className="flex shrink-0 items-center gap-1 bg-accent/5 p-1 rounded-xl border border-accent/10">
-             <button 
+            <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1 border border-white/5">
+              <select
+                value={compressionFormat}
+                onChange={(e) => setCompressionFormat(e.target.value as "smart" | "bc7" | "bc1")}
+                className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer"
+                title="Compression Format — Smart: auto-pick per texture (BC5 normal, BC7 alpha, BC1 opaque). BC7: max quality (alpha). BC1: smallest."
+              >
+                <option value="smart">SMART</option>
+                <option value="bc7">BC7</option>
+                <option value="bc1">BC1</option>
+              </select>
+            </div>
+             <button
               onClick={optimizeAll}
               className={`shrink-0 whitespace-nowrap p-1.5 bg-emerald-500 text-white rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
               title="Optimize (DDS Only)"
