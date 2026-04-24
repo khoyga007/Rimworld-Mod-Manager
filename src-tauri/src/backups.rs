@@ -8,7 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_BACKUPS: usize = 5;
 
 #[derive(Debug, Clone, Serialize)]
-#[allow(dead_code)]
 pub struct DlcBackup {
     pub name: String,
     pub path: String,
@@ -84,7 +83,6 @@ fn prune(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn list() -> Result<Vec<DlcBackup>> {
     let dir = backup_dir();
     let entries = list_entries(&dir)?;
@@ -114,7 +112,6 @@ pub fn list() -> Result<Vec<DlcBackup>> {
     Ok(out)
 }
 
-#[allow(dead_code)]
 pub fn restore(name: &str, dlc_path: &Path) -> Result<()> {
     if name.contains('/') || name.contains('\\') || name.contains("..") {
         anyhow::bail!("invalid backup name");

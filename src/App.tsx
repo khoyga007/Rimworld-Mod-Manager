@@ -220,6 +220,13 @@ export default function App() {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider uppercase">{t('common.status_online')}</span>
             </div>
           </div>
+          <button
+            onClick={() => invoke("launch_rimworld").catch(e => toast(e?.toString() || "Error", "error"))}
+            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs shadow-lg shadow-emerald-900/20 ${ultraPerformance ? '' : 'transition-all active:scale-95'}`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="6 3 20 12 6 21 6 3" /></svg>
+            <span>{t('mods.launch_game')}</span>
+          </button>
         </header>
 
         {/* View content */}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, ask } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import type { AppSettings, PerformanceLevel, RimWorldPaths } from "../types";
 
@@ -15,6 +15,10 @@ interface Props {
 export default function SettingsView({ paths, settings, onSettingsChange, onPathsChange, toast }: Props) {
   const { t } = useTranslation();
   const [exePath, setExePath] = useState<string>("");
+  const [texconvInstalled, setTexconvInstalled] = useState<boolean | null>(null);
+  const [texconvBusy, setTexconvBusy] = useState(false);
+  const [backups, setBackups] = useState<Array<{ name: string; path: string; timestamp_ms: number; size_bytes: number; enabled_count: number }>>([]);
+  const [backupsBusy, setBackupsBusy] = useState(false);
   const performanceEnabled = settings.performanceLevel !== "normal";
   const ultraPerformance = settings.performanceLevel === "ultra";
 
@@ -31,7 +35,46 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
     invoke<string | null>("get_stored_exe_path").then((p) => {
       if (p) setExePath(p);
     });
+    invoke<boolean>("check_texconv").then(setTexconvInstalled).catch(() => setTexconvInstalled(false));
+    refreshBackups();
   }, []);
+
+  const refreshBackups = async () => {
+    setBackupsBusy(true);
+    try {
+      const list = await invoke<Array<{ name: string; path: string; timestamp_ms: number; size_bytes: number; enabled_count: number }>>("list_mods_config_backups");
+      setBackups(list);
+    } catch (e: any) {
+      toast(e?.toString() || "Error", "error");
+    } finally {
+      setBackupsBusy(false);
+    }
+  };
+
+  const restoreBackup = async (name: string) => {
+    const ok = await ask(t('settings.backups_restore_confirm'), { title: t('settings.backups_title'), kind: 'warning' });
+    if (!ok) return;
+    try {
+      await invoke("restore_mods_config_backup", { name });
+      toast(t('settings.backups_restored'), "success");
+      refreshBackups();
+    } catch (e: any) {
+      toast(e?.toString() || "Error", "error");
+    }
+  };
+
+  const downloadTexconv = async () => {
+    setTexconvBusy(true);
+    try {
+      await invoke<string>("download_texconv");
+      setTexconvInstalled(true);
+      toast(t('settings.texconv_downloaded'), "success");
+    } catch (e: any) {
+      toast(t('settings.texconv_failed', { error: e?.toString() || "unknown" }), "error");
+    } finally {
+      setTexconvBusy(false);
+    }
+  };
 
   const browseGameDir = async () => {
     const selected = await open({ directory: true, title: t('settings.game_directory') });
@@ -289,6 +332,70 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
               </div>
             </div>
           </div>
+        </section>
+
+        {/* texconv Tool */}
+        <section className="glass-card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(168, 85, 247, 0.12)", color: "#c4b5fd", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+              🎨
+            </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.texconv_title')}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.texconv_desc')}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className={`badge ${texconvInstalled ? 'success' : 'warning'}`}>
+              {texconvInstalled === null ? "..." : texconvInstalled ? t('settings.texconv_installed') : t('settings.texconv_missing')}
+            </span>
+            <button className="btn-primary" onClick={downloadTexconv} disabled={texconvBusy}>
+              {texconvBusy
+                ? t('settings.texconv_downloading')
+                : texconvInstalled
+                  ? t('settings.texconv_reinstall')
+                  : t('settings.texconv_download')}
+            </button>
+          </div>
+        </section>
+
+        {/* ModsConfig Backups */}
+        <section className="glass-card" style={{ padding: 24, gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(234, 179, 8, 0.12)", color: "#fde68a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+              💾
+            </div>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('settings.backups_title')}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)" }}>{t('settings.backups_desc')}</div>
+            </div>
+            <button className="btn-secondary" onClick={refreshBackups} disabled={backupsBusy}>
+              {t('settings.backups_refresh')}
+            </button>
+          </div>
+          {backups.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--color-text-dim)", padding: 12, textAlign: "center" }}>
+              {t('settings.backups_empty')}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {backups.map((b) => (
+                <div key={b.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "rgba(0,0,0,0.2)", borderRadius: 8, border: "1px solid var(--color-border)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                      {new Date(b.timestamp_ms).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-dim)", marginTop: 2 }}>
+                      {t('settings.backups_enabled_count', { count: b.enabled_count })} · {(b.size_bytes / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button className="btn-primary" onClick={() => restoreBackup(b.name)}>
+                    {t('settings.backups_restore')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* About */}

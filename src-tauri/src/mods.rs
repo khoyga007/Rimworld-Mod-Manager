@@ -17,7 +17,8 @@ const REQUIRED_MOD_IDS: &[&str] = &[
     "ludeon.rimworld.royalty", 
     "ludeon.rimworld.ideology", 
     "ludeon.rimworld.biotech", 
-    "ludeon.rimworld.anomaly"
+    "ludeon.rimworld.anomaly",
+    "ludeon.rimworld.odyssey"
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -82,6 +83,7 @@ pub struct ModInfo {
     pub custom_note: String,
     pub workshop_name: Option<String>,
     pub created_at: u64,
+    pub duplicate_id: bool,
 }
 
 // Custom Metadata Storage (Tags + Notes + Workshop Names + Performance Cache)
@@ -334,11 +336,88 @@ pub fn read_mods_config(path: &Path) -> Result<ModsConfig> {
     Ok(config)
 }
 
-pub fn write_mods_config(path: &Path, config: &ModsConfig) -> Result<()> {
+pub fn write_mods_config(path: &Path, config: &ModsConfig, paths: &RimWorldPaths) -> Result<()> {
     let mut active = config.active_mods.clone();
-    // Ensure core is always present
-    if !active.iter().any(|m| m.to_lowercase() == "ludeon.rimworld") {
-        active.insert(0, "Ludeon.RimWorld".to_string());
+    
+    // 1. Deduplicate case-insensitively
+    let mut seen = std::collections::HashSet::new();
+    active.retain(|id| seen.insert(id.to_lowercase()));
+
+    // 2. Determine which official DLCs actually exist on disk
+    let data_dir = paths.game_dir.as_ref().map(|gd| PathBuf::from(gd).join("Data"));
+    let dlc_on_disk: Vec<&str> = REQUIRED_MOD_IDS.iter()
+        .filter(|id| {
+            if let Some(ref data) = data_dir {
+                let folder_name = id.split('.').last().unwrap_or(id);
+                data.join(folder_name).exists()
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect();
+
+    // 3. Aggressively remove ALL official/anchor mods from the current list
+    active.retain(|m| {
+        let m_clean = m.trim().to_lowercase();
+        !m_clean.starts_with("ludeon.rimworld") && 
+        m_clean != "brrainz.harmony" && 
+        m_clean != "zetrith.prepatcher"
+    });
+
+    // 4. Build official prefix based on existence/enabled status
+    let mut official_prefix = Vec::new();
+    
+    // Prepatcher (Top priority if enabled)
+    if config.active_mods.iter().any(|m| m.eq_ignore_ascii_case("zetrith.prepatcher")) {
+        official_prefix.push("zetrith.prepatcher".to_string());
+    }
+
+    // Harmony
+    if config.active_mods.iter().any(|m| m.eq_ignore_ascii_case("brrainz.harmony")) {
+        official_prefix.push("brrainz.harmony".to_string());
+    }
+
+    // Core (Always required, force lowercase)
+    official_prefix.push("ludeon.rimworld".to_string());
+
+    // DLCs (Only if they exist on disk, force lowercase)
+    let dlc_order = [
+        "ludeon.rimworld.royalty",
+        "ludeon.rimworld.ideology",
+        "ludeon.rimworld.biotech",
+        "ludeon.rimworld.anomaly",
+        "ludeon.rimworld.odyssey"
+    ];
+    for dlc in dlc_order {
+        if dlc_on_disk.contains(&dlc) {
+            official_prefix.push(dlc.to_string());
+        }
+    }
+
+    // 6. Prepend the official prefix to the cleaned active list
+    for id in official_prefix.into_iter().rev() {
+        active.insert(0, id);
+    }
+
+    // 7. Final Deduplication (lowercase everything to be safe)
+    let mut seen = std::collections::HashSet::new();
+    active.retain(|id| {
+        let low = id.to_lowercase();
+        seen.insert(low)
+    });
+    
+    // Final pass: force EVERYTHING in active to lowercase to match user's game style
+    for m in active.iter_mut() {
+        *m = m.to_lowercase();
+    }
+
+    // 8. Clean up knownExpansions (deduplicate and force lowercase)
+    let mut known = config.known_expansions.clone();
+    let mut seen_known = std::collections::HashSet::new();
+    known.retain(|id| seen_known.insert(id.to_lowercase()));
+    for k in known.iter_mut() {
+        *k = k.to_lowercase();
     }
 
     let mut out = String::new();
@@ -352,16 +431,15 @@ pub fn write_mods_config(path: &Path, config: &ModsConfig) -> Result<()> {
     
     out.push_str("  <activeMods>\n");
     for m in &active {
-        out.push_str(&format!("    <li>{}</li>\n", m));
+        out.push_str(&format!("    <li>{}</li>\n", m.trim()));
     }
     out.push_str("  </activeMods>\n");
     
     out.push_str("  <knownExpansions>\n");
-    for m in &config.known_expansions {
-        out.push_str(&format!("    <li>{}</li>\n", m));
+    for m in &known {
+        out.push_str(&format!("    <li>{}</li>\n", m.trim()));
     }
     out.push_str("  </knownExpansions>\n");
-    
     out.push_str("</ModsConfigData>\n");
     
     // Atomic Write
@@ -444,9 +522,20 @@ pub fn list(paths: &RimWorldPaths) -> Result<Vec<ModInfo>> {
         .collect();
 
     // Parallel scan with cache check
-    let results: Vec<ModInfo> = candidates.into_par_iter().map(|(about_file, mod_path, source, m_time)| {
+    let mut results: Vec<ModInfo> = candidates.into_par_iter().map(|(about_file, mod_path, source, m_time)| {
         load_mod_smart(&about_file, &mod_path, &active_set, source, m_time, &metadata, &metadata_lookup)
     }).filter_map(|r| r.ok()).collect();
+
+    // Detect duplicates
+    let mut id_counts = std::collections::HashMap::new();
+    for m in &results {
+        *id_counts.entry(m.id.to_lowercase()).or_insert(0) += 1;
+    }
+    for m in results.iter_mut() {
+        if let Some(&count) = id_counts.get(&m.id.to_lowercase()) {
+            m.duplicate_id = count > 1;
+        }
+    }
 
     let mut out = results;
     let mut seen_ids = std::collections::HashSet::new();
@@ -606,6 +695,7 @@ fn load_mod_smart(
             workshop_name: m.workshop_name.clone(),
             created_at: m.first_seen_at.unwrap_or(0),
             missing_dependencies: vec![],
+            duplicate_id: false,
         });
             }
         }
@@ -668,6 +758,7 @@ fn load_mod_smart(
         workshop_name: None,
         created_at: 0,
         missing_dependencies: vec![],
+        duplicate_id: false,
     })
 }
 
@@ -742,7 +833,7 @@ pub fn set_enabled(paths: &RimWorldPaths, id: &str, enabled: bool) -> Result<()>
     if enabled {
         config.active_mods.push(id.to_string());
     }
-    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    write_mods_config(Path::new(&paths.mods_config_path), &config, paths)?;
     apply_cached_order(&config.active_mods);
     Ok(())
 }
@@ -759,7 +850,7 @@ pub fn set_all_enabled(paths: &RimWorldPaths, enabled: bool) -> Result<()> {
             REQUIRED_MOD_IDS.iter().any(|&r| r == m_lower)
         });
     }
-    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    write_mods_config(Path::new(&paths.mods_config_path), &config, paths)?;
     apply_cached_order(&config.active_mods);
     Ok(())
 }
@@ -773,7 +864,7 @@ pub fn set_enabled_set(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
         .cloned()
         .collect();
     config.active_mods = ordered;
-    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    write_mods_config(Path::new(&paths.mods_config_path), &config, paths)?;
     apply_cached_order(&config.active_mods);
     Ok(())
 }
@@ -784,7 +875,7 @@ pub fn set_order(paths: &RimWorldPaths, ids: &[String]) -> Result<()> {
     // Trust the frontend's list entirely for the active order
     config.active_mods = ids.iter().cloned().collect();
     
-    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    write_mods_config(Path::new(&paths.mods_config_path), &config, paths)?;
     apply_cached_order(&config.active_mods);
     Ok(())
 }
@@ -801,7 +892,7 @@ pub fn delete_mod(paths: &RimWorldPaths, id: &str) -> Result<()> {
     let mut config = read_mods_config(Path::new(&paths.mods_config_path))?;
     let id_lower = id.to_lowercase();
     config.active_mods.retain(|m| m.to_lowercase() != id_lower);
-    write_mods_config(Path::new(&paths.mods_config_path), &config)?;
+    write_mods_config(Path::new(&paths.mods_config_path), &config, paths)?;
     clear_cache();
     Ok(())
 }

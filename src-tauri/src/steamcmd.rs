@@ -396,42 +396,53 @@ where
         
         if let Some(remote_id) = &m.remote_file_id {
             on_progress(pct, &format!("Restoring: {} ({}/{})", m.name, current_idx, total_count));
-            
-            if let Some(Ok(fresh_dir)) = results.get(remote_id) {
-                let target_path = std::path::Path::new(&m.path);
-                
-                // Backup existing corrupted folder
-                let backup_path = target_path.with_extension("corrupted_bak");
-                if backup_path.exists() {
-                    let _ = std::fs::remove_dir_all(&backup_path);
-                }
-                
-                if let Ok(_) = std::fs::rename(target_path, &backup_path) {
-                    // Copy fresh dir to target path
-                    if let Ok(_) = std::fs::create_dir_all(target_path) {
-                        if let Ok(_) = copy_dir_recursive(fresh_dir, target_path) {
-                            let _ = std::fs::remove_dir_all(&backup_path);
-                            restored += 1;
+
+            match results.get(remote_id) {
+                Some(Ok(fresh_dir)) => {
+                    let target_path = std::path::Path::new(&m.path);
+
+                    // Backup existing corrupted folder
+                    let backup_path = target_path.with_extension("corrupted_bak");
+                    if backup_path.exists() {
+                        let _ = std::fs::remove_dir_all(&backup_path);
+                    }
+
+                    if std::fs::rename(target_path, &backup_path).is_ok() {
+                        if std::fs::create_dir_all(target_path).is_ok() {
+                            if copy_dir_recursive(fresh_dir, target_path).is_ok() {
+                                let _ = std::fs::remove_dir_all(&backup_path);
+                                restored += 1;
+                            } else {
+                                // Rollback
+                                let _ = std::fs::remove_dir_all(target_path);
+                                let _ = std::fs::rename(&backup_path, target_path);
+                                failed += 1;
+                            }
                         } else {
-                            // Rollback
-                            let _ = std::fs::remove_dir_all(target_path);
                             let _ = std::fs::rename(&backup_path, target_path);
                             failed += 1;
                         }
                     } else {
-                        let _ = std::fs::rename(&backup_path, target_path);
                         failed += 1;
                     }
-                } else {
+                }
+                _ => {
+                    // Download missing or errored for this id — count as failure.
                     failed += 1;
                 }
             }
+        } else {
+            failed += 1;
         }
     }
 
     crate::mods::clear_cache();
     on_progress(100, &format!("Done! Restored {} mods, {} failed.", restored, failed));
-    
+
+    if restored == 0 && failed > 0 {
+        return Err(anyhow!("Restore failed for all {} mods", failed));
+    }
+
     Ok(())
 }
 

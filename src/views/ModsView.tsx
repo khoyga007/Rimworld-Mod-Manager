@@ -5,7 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvided } from "@hello-pangea/dnd";
 import { FixedSizeList as List } from "react-window";
 
-import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Play, Wand2, Bomb } from "lucide-react";
+import { Search, RefreshCw, Save, Trash2, Folder, LifeBuoy, Scaling, BarChart3, ChevronRight, ChevronLeft, Plus, X, StickyNote, Wand2, Bomb, Undo2, Upload, CheckSquare, Square, Download } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import type { CustomTag, ModInfo, PerformanceLevel, Preset } from "../types";
 import CustomDialog from "../components/CustomDialog";
@@ -248,6 +249,11 @@ const ModCard = memo(({
             }`}>
               {mod.source}
             </span>
+            {mod.duplicate_id && (
+              <span className="text-[8px] uppercase font-black px-1 rounded border border-amber-500 bg-amber-500/20 text-amber-400">
+                Duplicate
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground min-w-0">
             <span className="truncate">{mod.author || 'Unknown'}</span>
@@ -327,8 +333,57 @@ const ModCard = memo(({
           </div>
         </div>
 
+        {mod.source === "local" && (
+          <>
+            <button 
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await invoke("optimize_mod_textures", { id: mod.id, format: "smart" });
+                  toast("Optimized!", "success");
+                  onRefresh();
+                } catch (err: any) { toast(err.toString(), "error"); }
+              }}
+              className="p-1 hover:bg-white/10 text-emerald-400 rounded shrink-0" 
+              title="Optimize Textures (DDS)"
+            >
+              <Scaling size={14} />
+            </button>
+            <button 
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await invoke("resize_mod_textures", { id: mod.id, maxRes: 1024, format: "smart" });
+                  toast("Resized!", "success");
+                  onRefresh();
+                } catch (err: any) { toast(err.toString(), "error"); }
+              }}
+              className="p-1 hover:bg-white/10 text-accent rounded shrink-0" 
+              title="Resize & Optimize"
+            >
+              <Scaling size={10} className="scale-75" />
+            </button>
+            <button 
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await invoke("revert_mod_textures", { id: mod.id });
+                  toast("Reverted!", "success");
+                  onRefresh();
+                } catch (err: any) { toast(err.toString(), "error"); }
+              }}
+              className="p-1 hover:bg-white/10 text-orange-400 rounded shrink-0" 
+              title="Revert Textures"
+            >
+              <Undo2 size={14} />
+            </button>
+          </>
+        )}
         <button
-          onClick={() => invoke("open_path_or_url", { target: mod.path })}
+          onClick={(e) => {
+            e.stopPropagation();
+            invoke("open_path_or_url", { target: mod.path });
+          }}
           className="p-1 hover:bg-white/10 rounded text-muted-foreground shrink-0"
           title="Open Folder"
         >
@@ -390,6 +445,11 @@ const ModCard = memo(({
             }`}>
               {mod.source}
             </span>
+            {mod.duplicate_id && (
+              <span className="text-[8px] uppercase font-black px-1 rounded border border-amber-500 bg-amber-500/20 text-amber-400 animate-pulse">
+                Duplicate
+              </span>
+            )}
             <span className="text-[10px] text-muted-foreground truncate opacity-60">by {mod.author || 'Unknown'}</span>
             <span className="text-[10px] font-mono opacity-40 ml-auto">{formatSize(mod.size_bytes)}</span>
           </div>
@@ -441,7 +501,76 @@ const ModCard = memo(({
         )}
         
         <div className={`ml-auto flex gap-1 ${ultraPerformance ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}>
+          {mod.source === "local" && (
+            <>
+              <button 
+                onClick={async () => {
+                  try {
+                    await invoke("optimize_mod_textures", { id: mod.id, format: "smart" });
+                    toast("Optimized!", "success");
+                    onRefresh();
+                  } catch (e: any) { toast(e.toString(), "error"); }
+                }}
+                className="p-1 hover:bg-white/10 text-emerald-400 rounded" 
+                title="Optimize Textures (DDS)"
+              >
+                <Scaling size={12} />
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await invoke("resize_mod_textures", { id: mod.id, maxRes: 1024, format: "smart" });
+                    toast("Resized!", "success");
+                    onRefresh();
+                  } catch (e: any) { toast(e.toString(), "error"); }
+                }}
+                className="p-1 hover:bg-white/10 text-accent rounded" 
+                title="Resize & Optimize"
+              >
+                <Scaling size={9} className="scale-75" />
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await invoke("revert_mod_textures", { id: mod.id });
+                    toast("Reverted!", "success");
+                    onRefresh();
+                  } catch (e: any) { toast(e.toString(), "error"); }
+                }}
+                className="p-1 hover:bg-white/10 text-orange-400 rounded" 
+                title="Revert Textures"
+              >
+                <Undo2 size={12} />
+              </button>
+            </>
+          )}
           <button onClick={() => setEditingNote(!editingNote)} className="p-1 hover:bg-white/10 rounded" title="Add Note"><StickyNote size={12} /></button>
+          {mod.remote_file_id && (
+            <>
+              <button
+                onClick={() => invoke("open_workshop_downloader", { workshopId: mod.remote_file_id }).catch(e => toast(e.toString(), "error"))}
+                className="p-1 hover:bg-white/10 rounded text-blue-400"
+                title="Open Workshop Download Page"
+              >
+                <Upload size={12} />
+              </button>
+              {mod.path.toLowerCase().includes("workshop") && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke("backup_mod_to_local", { id: mod.id });
+                      onRefresh();
+                      toast("Copied to Local!", "success");
+                    } catch (e: any) { toast(e.toString(), "error"); }
+                  }}
+                  className="p-1 hover:bg-white/10 rounded text-emerald-400"
+                  title="Copy to Local"
+                >
+                  <Save size={12} />
+                </button>
+              )}
+            </>
+          )}
           <button onClick={() => invoke("open_path_or_url", { target: mod.path })} className="p-1 hover:bg-white/10 rounded" title="Open Folder"><Folder size={12} /></button>
           <button 
             onClick={() => {
@@ -586,8 +715,8 @@ export default function ModsView({
   const [batchStatus, setBatchStatus] = useState<{
     active: boolean; currentModName: string; progress: number; title: string;
   } | null>(null);
-  const [resizeRes, setResizeRes] = useState<512 | 1024 | 2048>(1024);
   const [compressionFormat, setCompressionFormat] = useState<"smart" | "bc7" | "bc1">("smart");
+  const [resizeRes, setResizeRes] = useState<number>(1024);
   const [, setModSizes] = useState<Record<string, { total: number, assets: number }>>({});
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
@@ -604,6 +733,7 @@ export default function ModsView({
     onConfirm: () => {}
   });
   const [analyzing, setAnalyzing] = useState(false);
+  const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [inactiveVisibleRange, setInactiveVisibleRange] = useState<VisibleRange>(INITIAL_VISIBLE_RANGE);
   const [activeVisibleRange, setActiveVisibleRange] = useState<VisibleRange>(INITIAL_VISIBLE_RANGE);
@@ -756,6 +886,27 @@ export default function ModsView({
     });
   };
 
+  const resizeAll = async () => {
+    const localMods = localActive.filter(m => m.source === "local");
+    if (localMods.length === 0) {
+      toast("No local mods active to resize!", "warning");
+      return;
+    }
+    setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: "Resizing Textures" });
+    try {
+      await invoke("resize_all_local_mods", { 
+        maxRes: resizeRes,
+        format: compressionFormat
+      });
+      toast("Resize complete!", "success");
+      onRefresh();
+    } catch (e: any) {
+      toast(e.toString(), "error");
+    } finally {
+      setBatchStatus(null);
+    }
+  };
+
   const optimizeAll = async () => {
     const localMods = localActive.filter(m => m.source === "local");
     if (localMods.length === 0) {
@@ -764,11 +915,28 @@ export default function ModsView({
     }
     setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: "Optimizing Textures" });
     try {
-      await invoke("resize_all_local_mods", { 
-        maxRes: resizeRes,
+      await invoke("optimize_all_local_mods", { 
         format: compressionFormat
       });
       toast("Optimization complete!", "success");
+      onRefresh();
+    } catch (e: any) {
+      toast(e.toString(), "error");
+    } finally {
+      setBatchStatus(null);
+    }
+  };
+
+  const revertAll = async () => {
+    const localMods = localActive.filter(m => m.source === "local");
+    if (localMods.length === 0) {
+      toast("No local mods active to revert!", "warning");
+      return;
+    }
+    setBatchStatus({ active: true, currentModName: "Starting...", progress: 0, title: "Reverting Textures" });
+    try {
+      await invoke("revert_all_local_mods");
+      toast("Revert complete!", "success");
       onRefresh();
     } catch (e: any) {
       toast(e.toString(), "error");
@@ -845,8 +1013,8 @@ export default function ModsView({
 
   const disableAll = () => {
     // Keep official mods active
-    const officialMods = localActive.filter(m => m.source === "official" || m.author === "Ludeon Studios");
-    const otherMods = localActive.filter(m => m.source !== "official" && m.author !== "Ludeon Studios");
+    const officialMods = localActive.filter(m => m.source === 'official' || m.author === 'Ludeon Studios');
+    const otherMods = localActive.filter(m => m.source !== 'official' && m.author !== 'Ludeon Studios');
     
     if (otherMods.length === 0) {
       toast("No non-official mods to disable!", "info");
@@ -1145,31 +1313,43 @@ export default function ModsView({
 
           {/* Texture Optimization Cluster */}
           <div className="flex shrink-0 items-center gap-1 bg-accent/5 p-1 rounded-xl border border-accent/10">
-             {/* Resolution Toggle */}
-             <button 
-               onClick={() => setResizeRes(prev => prev === 512 ? 1024 : prev === 1024 ? 2048 : 512)}
-               className={`shrink-0 whitespace-nowrap px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent border border-accent/20 hover:bg-accent/10 ${ultraPerformance ? '' : 'transition-colors'}`}
-               title="Click to Cycle Resolution"
-             >
-               {resizeRes}px
-             </button>
-
-             {/* Compression Toggle */}
-             <button 
-               onClick={() => setCompressionFormat(prev => prev === "smart" ? "bc7" : prev === "bc7" ? "bc1" : "smart")}
-               className={`shrink-0 whitespace-nowrap px-2 py-1 bg-black/40 rounded-lg text-[10px] font-black text-accent/70 border border-accent/10 hover:bg-accent/10 uppercase ${ultraPerformance ? '' : 'transition-colors'}`}
-               title="Compression Format"
-             >
-               {compressionFormat}
-             </button>
-
              <button 
               onClick={optimizeAll}
-              className={`shrink-0 whitespace-nowrap p-1.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
-              title={t('mods.optimize')}
+              className={`shrink-0 whitespace-nowrap p-1.5 bg-emerald-500 text-white rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
+              title="Optimize (DDS Only)"
             >
               <Scaling size={16} />
-              <span className="text-[10px] font-black uppercase">{t('mods.optimize')}</span>
+              <span className="text-[10px] font-black uppercase">Optimize</span>
+            </button>
+
+            <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1 border border-white/5">
+              <select
+                value={resizeRes}
+                onChange={(e) => setResizeRes(Number(e.target.value))}
+                className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer"
+                title="Max Resolution"
+              >
+                <option value={512}>512px</option>
+                <option value={1024}>1024px</option>
+                <option value={2048}>2048px</option>
+                <option value={4096}>4096px</option>
+              </select>
+              <button 
+                onClick={resizeAll}
+                className={`shrink-0 whitespace-nowrap p-1.5 bg-accent text-accent-foreground rounded-md hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
+                title="Resize & Optimize"
+              >
+                <span className="text-[10px] font-black uppercase">Resize</span>
+              </button>
+            </div>
+
+            <button 
+              onClick={revertAll}
+              className={`shrink-0 whitespace-nowrap p-1.5 bg-orange-500 text-white rounded-lg hover:brightness-110 flex items-center gap-2 ${ultraPerformance ? '' : 'transition-all'}`}
+              title={t('mods.revert') || "Revert"}
+            >
+              <Undo2 size={16} />
+              <span className="text-[10px] font-black uppercase">{t('mods.revert') || "Revert"}</span>
             </button>
           </div>
         </div>
@@ -1215,14 +1395,6 @@ export default function ModsView({
             </div>
           )}
 
-          <button 
-            onClick={() => invoke("launch_rimworld").catch(e => toast(e.toString(), "error"))}
-            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs shadow-lg shadow-emerald-900/20 group ${ultraPerformance ? '' : 'transition-all active:scale-95'}`}
-          >
-            <Play size={16} className="fill-current" />
-            <span>{t('mods.launch_game')}</span>
-          </button>
-
           <div className={`flex min-w-[180px] w-56 items-center bg-white/5 rounded-full px-3 py-1.5 border border-white/5 focus-within:border-accent/50 shadow-inner ${ultraPerformance ? '' : 'transition-all'}`}>
             <Search size={14} className="text-muted-foreground mr-2" />
             <input 
@@ -1233,7 +1405,64 @@ export default function ModsView({
             />
           </div>
 
-          <button 
+          <button
+            onClick={async () => {
+              try {
+                const selected = await openDialog({
+                  filters: [{ name: "Zip", extensions: ["zip"] }],
+                  title: t('mods.install_from_zip') || "Install from Zip",
+                });
+                if (!selected) return;
+                const msg = await invoke<string>("install_from_zip", { zipPath: selected });
+                onRefresh();
+                toast(msg || t('mods.install_done') || "Installed!", "success");
+              } catch (e: any) { toast(e.toString(), "error"); }
+            }}
+            className={`shrink-0 p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground ${ultraPerformance ? '' : 'transition-all'}`}
+            title={t('mods.install_from_zip') || "Install from Zip"}
+          >
+            <Upload size={16} />
+          </button>
+
+          <button
+            onClick={async () => {
+              try {
+                const anyEnabled = mods.some(m => m.enabled && !m.id.toLowerCase().startsWith("ludeon."));
+                await invoke("set_all_mods_enabled", { enabled: !anyEnabled });
+                onRefresh();
+                toast(anyEnabled ? (t('mods.all_disabled') || "All disabled.") : (t('mods.all_enabled') || "All enabled."), "success");
+              } catch (e: any) { toast(e.toString(), "error"); }
+            }}
+            className={`shrink-0 p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground ${ultraPerformance ? '' : 'transition-all'}`}
+            title={t('mods.toggle_all') || "Toggle all"}
+          >
+            {mods.some(m => m.enabled && !m.id.toLowerCase().startsWith("ludeon.")) ? <CheckSquare size={16} /> : <Square size={16} />}
+          </button>
+
+          <button
+            onClick={async () => {
+              if (updateCheckBusy) return;
+              setUpdateCheckBusy(true);
+              try {
+                const results = await invoke<Array<{ mod_id: string; has_update: boolean }>>("check_mod_updates");
+                const updates = results.filter(r => r.has_update).length;
+                const current = results.length - updates;
+                if (updates === 0) {
+                  toast(t('settings.check_updates_none'), "success");
+                } else {
+                  toast(t('settings.check_updates_result', { updates, current }), "success");
+                }
+              } catch (e: any) { toast(e?.toString() || "Error", "error"); }
+              finally { setUpdateCheckBusy(false); }
+            }}
+            className={`shrink-0 p-2 bg-white/5 hover:bg-white/10 rounded-full text-muted-foreground ${ultraPerformance ? '' : 'transition-all'} ${updateCheckBusy ? 'opacity-50' : ''}`}
+            title={t('settings.check_updates')}
+            disabled={updateCheckBusy}
+          >
+            <Download size={16} className={updateCheckBusy ? 'animate-pulse' : ''} />
+          </button>
+
+          <button
             onClick={async () => {
               try {
                 await invoke("refresh_mods");

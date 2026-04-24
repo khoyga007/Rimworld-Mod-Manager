@@ -32,6 +32,7 @@ export interface ModInfo {
   enabled: boolean;
   load_order: number;
   size_bytes: number;
+  duplicate_id: boolean;
 }
 
 export interface RimWorldPaths {

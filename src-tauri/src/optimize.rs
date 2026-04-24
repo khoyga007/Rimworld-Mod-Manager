@@ -29,7 +29,7 @@ impl CompressionFormat {
         match self {
             CompressionFormat::Bc7 => "BC7_UNORM",
             CompressionFormat::Bc1 => if has_alpha { "BC3_UNORM" } else { "BC1_UNORM" },
-            CompressionFormat::Smart => if has_alpha { "BC7_UNORM" } else { "BC1_UNORM" },
+            CompressionFormat::Smart => if has_alpha { "BC3_UNORM" } else { "BC1_UNORM" },
         }
     }
 }
@@ -317,25 +317,12 @@ pub fn optimize_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: Mo
     let groups_vec: Vec<(PathBuf, Vec<PathBuf>)> = groups.into_iter().collect();
     
     groups_vec.par_iter().for_each(|(parent, files)| {
-        match format {
-            CompressionFormat::Smart => {
-                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
-                if !with_alpha.is_empty() {
-                    run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, "BC7_UNORM", &completed, &failed_count, total);
-                }
-                if !no_alpha.is_empty() {
-                    run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, "BC1_UNORM", &completed, &failed_count, total);
-                }
-            }
-            _ => {
-                let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
-                if !with_alpha.is_empty() {
-                    run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, format.to_texconv_format(true), &completed, &failed_count, total);
-                }
-                if !no_alpha.is_empty() {
-                    run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, format.to_texconv_format(false), &completed, &failed_count, total);
-                }
-            }
+        let (with_alpha, no_alpha): (Vec<_>, Vec<_>) = files.iter().partition(|f| texture_has_alpha_channel(f));
+        if !with_alpha.is_empty() {
+            run_texconv_batch(&app, &mod_info, &texconv, parent, &with_alpha, format.to_texconv_format(true), &completed, &failed_count, total);
+        }
+        if !no_alpha.is_empty() {
+            run_texconv_batch(&app, &mod_info, &texconv, parent, &no_alpha, format.to_texconv_format(false), &completed, &failed_count, total);
         }
     });
 
@@ -514,10 +501,12 @@ pub fn revert_mod_textures(app: AppHandle, _paths: RimWorldPaths, mod_info: ModI
 fn revert_single_dds_to_png(texconv: &Path, dds_path: &Path) -> Result<()> {
     let parent = dds_path.parent().context("No parent dir")?;
 
+    // -vflip: undo the vflip applied during optimize/resize so PNG is upright.
     let output = Command::new(texconv)
         .args([
-            "-ft", "png",       // Output format PNG
-            "-y",              // Overwrite
+            "-ft", "png",
+            "-y",
+            "-vflip",
             "-o", &parent.to_string_lossy(),
         ])
         .arg(dds_path)
@@ -533,6 +522,69 @@ fn revert_single_dds_to_png(texconv: &Path, dds_path: &Path) -> Result<()> {
     let _ = fs::remove_file(dds_path);
 
     Ok(())
+}
+
+
+
+/// Helper to quickly read DDS width/height from the 128-byte header
+/// Offset 12: height (u32), Offset 16: width (u32)
+fn get_dds_metadata(path: &Path) -> Result<DdsMetadata> {
+    use std::io::Read;
+    let mut f = fs::File::open(path)?;
+    let mut header = [0u8; 148];
+    f.read_exact(&mut header)?;
+    
+    if &header[0..4] != b"DDS " {
+        anyhow::bail!("Invalid DDS header");
+    }
+
+    let height = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
+    let width = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
+    let mipmaps = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
+    let pf_flags = u32::from_le_bytes([header[80], header[81], header[82], header[83]]);
+    let four_cc = &header[84..88];
+    let alpha_mask = u32::from_le_bytes([header[104], header[105], header[106], header[107]]);
+
+    let has_alpha = if pf_flags & 0x1 != 0 || pf_flags & 0x2 != 0 {
+        true
+    } else if pf_flags & 0x4 != 0 {
+        match four_cc {
+            b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" => true,
+            b"DX10" => {
+                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
+                matches!(
+                    dxgi,
+                    2 | 10 | 11 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
+                        | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 74 | 75 | 77 | 78 | 97 | 98
+                )
+            }
+            _ => false,
+        }
+    } else {
+        alpha_mask != 0
+    };
+
+    let is_block_compressed = if pf_flags & 0x4 != 0 {
+        match four_cc {
+            b"DXT1" | b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" | b"ATI1" | b"ATI2" | b"BC4U"
+            | b"BC4S" | b"BC5U" | b"BC5S" => true,
+            b"DX10" => {
+                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
+                matches!(dxgi, 70..=84 | 94..=99)
+            }
+            _ => false,
+        }
+    } else {
+        false
+    };
+
+    Ok(DdsMetadata {
+        width,
+        height,
+        mipmaps,
+        has_alpha,
+        is_block_compressed,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +658,7 @@ pub fn resize_mod_textures(
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let resized_count = std::sync::atomic::AtomicUsize::new(0);
     let failed_count = std::sync::atomic::AtomicUsize::new(0);
+    let skipped_count = std::sync::atomic::AtomicUsize::new(0);
 
     // Group files by parent directory
     let mut groups: std::collections::HashMap<PathBuf, Vec<PathBuf>> = std::collections::HashMap::new();
@@ -617,6 +670,7 @@ pub fn resize_mod_textures(
                 let bc_ready = !meta.is_block_compressed || (meta.width % 4 == 0 && meta.height % 4 == 0);
                 if meta.width <= max_res && meta.height <= max_res && meta.mipmaps <= 1 && bc_ready {
                     completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    skipped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     continue;
                 }
             }
@@ -639,13 +693,9 @@ pub fn resize_mod_textures(
                 _ => format.to_texconv_format(is_alpha),
             };
 
-            // To maintain aspect ratio, we can't batch files with different aspect ratios
-            // using the same -w -h. 
-            // So we process them individually or in small sub-groups if they need resize.
             for f in list {
                 if let Ok((w, h)) = get_image_dimensions(f) {
                     if w > max_res || h > max_res {
-                        // Calculate new dimensions preserving aspect ratio
                         let (nw, nh) = if w > h {
                             (max_res, (h * max_res) / w)
                         } else {
@@ -654,7 +704,6 @@ pub fn resize_mod_textures(
                         
                         run_single_texconv_resize(&app, &mod_info, &texconv, parent, f, f_str, nw, nh, &completed, &failed_count, &resized_count, total);
                     } else {
-                        // Just compress
                         run_single_texconv_compress(&app, &mod_info, &texconv, parent, f, f_str, &completed, &failed_count, &resized_count, total);
                     }
                 } else {
@@ -670,15 +719,16 @@ pub fn resize_mod_textures(
 
     let failed = failed_count.load(std::sync::atomic::Ordering::Relaxed);
     let actual_resized = resized_count.load(std::sync::atomic::Ordering::Relaxed);
- 
+    let skipped = skipped_count.load(std::sync::atomic::Ordering::Relaxed);
+
     emit_progress(&app, OptimizeProgress {
         mod_id: mod_info.id.clone(),
         status: if failed > 0 { "done_with_errors".into() } else { "done".into() },
         progress: 100,
         message: if failed > 0 {
-            format!("Done! {} processed, {} skipped/failed.", actual_resized, total - actual_resized)
+            format!("Done! {} processed, {} skipped, {} failed.", actual_resized, skipped, failed)
         } else {
-            format!("Done! {} resized, {} already within {}px.", actual_resized, total - actual_resized, max_res)
+            format!("Done! {} resized, {} already within {}px.", actual_resized, skipped, max_res)
         },
     });
 
@@ -745,68 +795,6 @@ fn run_single_texconv_compress(
             message: format!("Optimizing {}/{} textures...", c, total),
         });
     }
-}
-
-
-/// Helper to quickly read DDS width/height from the 128-byte header
-/// Offset 12: height (u32), Offset 16: width (u32)
-fn get_dds_metadata(path: &Path) -> Result<DdsMetadata> {
-    use std::io::Read;
-    let mut f = fs::File::open(path)?;
-    let mut header = [0u8; 148];
-    f.read_exact(&mut header)?;
-    
-    if &header[0..4] != b"DDS " {
-        anyhow::bail!("Invalid DDS header");
-    }
-
-    let height = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
-    let width = u32::from_le_bytes([header[16], header[17], header[18], header[19]]);
-    let mipmaps = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
-    let pf_flags = u32::from_le_bytes([header[80], header[81], header[82], header[83]]);
-    let four_cc = &header[84..88];
-    let alpha_mask = u32::from_le_bytes([header[104], header[105], header[106], header[107]]);
-
-    let has_alpha = if pf_flags & 0x1 != 0 || pf_flags & 0x2 != 0 {
-        true
-    } else if pf_flags & 0x4 != 0 {
-        match four_cc {
-            b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" => true,
-            b"DX10" => {
-                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
-                matches!(
-                    dxgi,
-                    2 | 10 | 11 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36
-                        | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 74 | 75 | 77 | 78 | 97 | 98
-                )
-            }
-            _ => false,
-        }
-    } else {
-        alpha_mask != 0
-    };
-
-    let is_block_compressed = if pf_flags & 0x4 != 0 {
-        match four_cc {
-            b"DXT1" | b"DXT2" | b"DXT3" | b"DXT4" | b"DXT5" | b"ATI1" | b"ATI2" | b"BC4U"
-            | b"BC4S" | b"BC5U" | b"BC5S" => true,
-            b"DX10" => {
-                let dxgi = u32::from_le_bytes([header[128], header[129], header[130], header[131]]);
-                matches!(dxgi, 70..=84 | 94..=99)
-            }
-            _ => false,
-        }
-    } else {
-        false
-    };
-
-    Ok(DdsMetadata {
-        width,
-        height,
-        mipmaps,
-        has_alpha,
-        is_block_compressed,
-    })
 }
 
 fn get_image_dimensions(path: &Path) -> Result<(u32, u32)> {

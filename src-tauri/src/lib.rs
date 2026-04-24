@@ -22,6 +22,7 @@ use tauri::{Emitter, State};
 use tokio::sync::Mutex as TokioMutex;
 
 static DOWNLOAD_LOCK: TokioMutex<()> = TokioMutex::const_new(());
+static OPTIMIZE_LOCK: TokioMutex<()> = TokioMutex::const_new(());
 
 struct AppState {
     paths: Mutex<RimWorldPaths>,
@@ -140,13 +141,15 @@ async fn backup_mod_to_local(state: State<'_, AppState>, id: String) -> Result<(
 
 #[tauri::command]
 async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, format: optimize::CompressionFormat) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
     // Auto-download texconv if needed
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
     }
 
     let p = state.paths.lock().unwrap().clone();
-    
+
     let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
     let target_mod = mod_list.into_iter().find(|m| m.id.eq_ignore_ascii_case(&id))
         .ok_or_else(|| "Mod not found".to_string())?;
@@ -161,6 +164,8 @@ async fn optimize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>
 
 #[tauri::command]
 async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, format: optimize::CompressionFormat) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
     // Auto-download texconv if needed
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
@@ -186,6 +191,8 @@ async fn optimize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppStat
 
 #[tauri::command]
 async fn revert_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
     let p = state.paths.lock().unwrap().clone();
     let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
     let local_mods: Vec<_> = mod_list.into_iter().filter(|m| !m.path.contains("workshop")).collect();
@@ -205,6 +212,24 @@ async fn revert_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>
 }
 
 #[tauri::command]
+async fn revert_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
+    let p = state.paths.lock().unwrap().clone();
+    let mod_list = mods::list(&p).map_err(|e| e.to_string())?;
+    let target_mod = mod_list.into_iter().find(|m| m.id.eq_ignore_ascii_case(&id))
+        .ok_or_else(|| "Mod not found".to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        optimize::revert_mod_textures(app, p, target_mod)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn check_texconv() -> bool {
     optimize::has_texconv()
 }
@@ -217,6 +242,8 @@ async fn download_texconv() -> Result<String, String> {
 
 #[tauri::command]
 async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, id: String, max_res: u32, format: optimize::CompressionFormat) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
     }
@@ -237,6 +264,8 @@ async fn resize_mod_textures(app: tauri::AppHandle, state: State<'_, AppState>, 
 
 #[tauri::command]
 async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>, max_res: u32, format: optimize::CompressionFormat) -> Result<(), String> {
+    let _guard = OPTIMIZE_LOCK.try_lock().map_err(|_| "Another optimize/resize/revert is running. Please wait.".to_string())?;
+
     if !optimize::has_texconv() {
         optimize::ensure_texconv().await.map_err(|e| format!("Failed to download texconv.exe: {}", e))?;
     }
@@ -260,6 +289,7 @@ async fn resize_all_local_mods(app: tauri::AppHandle, state: State<'_, AppState>
     join_result.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
     Ok(())
 }
+
 
 #[derive(Serialize)]
 struct LogPayload {
@@ -330,6 +360,20 @@ fn get_stored_exe_path() -> Result<Option<String>, String> {
 fn set_stored_exe_path(path: String) -> Result<(), String> {
     let file = paths::config_dir().join("exe.txt");
     std::fs::write(&file, path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_mods_config_backups() -> Result<Vec<backups::DlcBackup>, String> {
+    backups::list().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn restore_mods_config_backup(state: State<AppState>, name: String) -> Result<(), String> {
+    let p = state.paths.lock().unwrap().clone();
+    let path = std::path::PathBuf::from(&p.mods_config_path);
+    backups::restore(&name, &path).map_err(|e| e.to_string())?;
+    mods::clear_cache();
+    Ok(())
 }
 
 #[tauri::command]
@@ -923,7 +967,7 @@ fn apply_preset(state: State<AppState>, id: String) -> Result<(), String> {
     let mut config = mods::read_mods_config(std::path::Path::new(&p.mods_config_path))
         .map_err(|e| e.to_string())?;
     config.active_mods = preset.mod_ids.clone();
-    mods::write_mods_config(std::path::Path::new(&p.mods_config_path), &config)
+    mods::write_mods_config(std::path::Path::new(&p.mods_config_path), &config, &p)
         .map_err(|e| e.to_string())?;
     mods::clear_cache();
     Ok(())
@@ -1213,9 +1257,12 @@ pub fn run() {
             read_mod_image,
             resize_mod_textures,
             resize_all_local_mods,
+            revert_mod_textures,
             set_mod_tags,
             set_mod_note,
             set_mod_workshop_name,
+            list_mods_config_backups,
+            restore_mods_config_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
