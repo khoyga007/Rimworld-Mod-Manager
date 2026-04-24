@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
+type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
 
 interface Props {
   currentView: View;
@@ -17,6 +17,7 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
     { id: "mods", icon: "📦", label: t('nav.mods') },
     { id: "hub", icon: "✨", label: t('nav.mod_hub') },
     { id: "download", icon: "⬇", label: t('nav.downloads') },
+    { id: "workshop", icon: "🌐", label: t('nav.workshop_browser') },
     { id: "collections", icon: "📁", label: t('nav.collections') },
     { id: "loadorder", icon: "📊", label: t('nav.load_order') },
     { id: "saves", icon: "🏰", label: t('nav.save_games') },

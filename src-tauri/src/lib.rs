@@ -20,7 +20,7 @@ use base64::Engine as _;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex as TokioMutex;
 
 static DOWNLOAD_LOCK: TokioMutex<()> = TokioMutex::const_new(());
@@ -1242,6 +1242,37 @@ async fn install_hub_mod(state: State<'_, AppState>, provider: HubProvider) -> R
     }
 }
 
+#[tauri::command]
+fn workshop_webview_url<R: tauri::Runtime>(app: AppHandle<R>, label: String) -> Result<String, String> {
+    let wv = app.get_webview(&label).ok_or_else(|| "webview not found".to_string())?;
+    wv.url().map(|u| u.to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn workshop_webview_navigate<R: tauri::Runtime>(app: AppHandle<R>, label: String, url: String) -> Result<(), String> {
+    let wv = app.get_webview(&label).ok_or_else(|| "webview not found".to_string())?;
+    let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
+    wv.navigate(parsed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn workshop_webview_reload<R: tauri::Runtime>(app: AppHandle<R>, label: String) -> Result<(), String> {
+    let wv = app.get_webview(&label).ok_or_else(|| "webview not found".to_string())?;
+    wv.reload().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn workshop_webview_back<R: tauri::Runtime>(app: AppHandle<R>, label: String) -> Result<(), String> {
+    let wv = app.get_webview(&label).ok_or_else(|| "webview not found".to_string())?;
+    wv.eval("window.history.back()").map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn workshop_webview_forward<R: tauri::Runtime>(app: AppHandle<R>, label: String) -> Result<(), String> {
+    let wv = app.get_webview(&label).ok_or_else(|| "webview not found".to_string())?;
+    wv.eval("window.history.forward()").map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_paths = paths::detect().unwrap_or(RimWorldPaths {
@@ -1320,6 +1351,11 @@ pub fn run() {
             set_mod_workshop_name,
             list_mods_config_backups,
             restore_mods_config_backup,
+            workshop_webview_url,
+            workshop_webview_navigate,
+            workshop_webview_reload,
+            workshop_webview_back,
+            workshop_webview_forward,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

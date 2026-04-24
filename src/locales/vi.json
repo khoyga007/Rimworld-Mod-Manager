@@ -32,6 +32,7 @@
     "logs": "Nhật ký (Log)",
     "guide": "Hướng dẫn",
     "downloads": "Tải về",
+    "workshop_browser": "Duyệt Workshop",
     "collections": "Bộ sưu tập",
     "settings": "Cài đặt"
   },
@@ -300,5 +301,12 @@
     "trouble_content": "• Nhật ký (Logs): Nếu game bị crash hoặc mod không chạy, hãy xem tab Nhật ký. Các dòng chữ ĐỎ là manh mối quan trọng nhất.\n• Hồi phục hệ thống: Tính năng này sẽ tải lại các file core cần thiết nếu bạn lỡ tay xóa nhầm hoặc làm hỏng file game gốc.\n• Clean Cache: Đôi khi việc xóa cache của game sẽ giải quyết được các lỗi hiển thị texture kỳ lạ.",
     "community_title": "Cộng đồng & Tài nguyên",
     "community_desc": "RimPro được xây dựng dựa trên sự đóng góp của cộng đồng RimWorld toàn cầu. Hãy tham khảo thêm các nguồn bên dưới để nâng tầm trải nghiệm."
+  },
+  "workshop_browser": {
+    "title": "Duyệt Steam Workshop",
+    "subtitle": "Duyệt Workshop ngay trong app và cài mod bằng 1 nút bấm.",
+    "download_this": "Tải mod này",
+    "not_a_mod_page": "Mở trang chi tiết mod trước đã.",
+    "queued": "Đã thêm vào hàng chờ:"
   }
 }

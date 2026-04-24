@@ -32,6 +32,7 @@
     "logs": "Logs",
     "guide": "User Guide",
     "downloads": "Downloads",
+    "workshop_browser": "Browse Workshop",
     "collections": "Collections",
     "settings": "Settings"
   },
@@ -300,5 +301,12 @@
     "trouble_content": "• Game Logs: If your game crashes, check the Logs tab. RED lines are your most important clues.\n• System Restore: This re-downloads essential core files if they become corrupted or accidentally deleted.\n• Clean Cache: Clearing the game's cache can often resolve strange texture glitches.",
     "community_title": "Community & Resources",
     "community_desc": "RimPro is built upon the contributions of the global RimWorld community. Check out these resources to further enhance your experience."
+  },
+  "workshop_browser": {
+    "title": "Browse Steam Workshop",
+    "subtitle": "Browse Workshop inside the app and install mods with one click.",
+    "download_this": "Download this mod",
+    "not_a_mod_page": "Open a mod detail page first.",
+    "queued": "Queued mod:"
   }
 }

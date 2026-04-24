@@ -10,6 +10,7 @@ const SettingsView = lazy(() => import("./views/SettingsView"));
 const LogsView = lazy(() => import("./views/LogsView"));
 const LoadOrderView = lazy(() => import("./views/LoadOrderView"));
 const DownloadView = lazy(() => import("./views/DownloadView"));
+const WorkshopBrowserView = lazy(() => import("./views/WorkshopBrowserView"));
 const CollectionsView = lazy(() => import("./views/CollectionsView"));
 const SaveGameView = lazy(() => import("./views/SaveGameView"));
 const GuideView = lazy(() => import("./views/GuideView"));
@@ -17,7 +18,7 @@ const ModHubView = lazy(() =>
   import("./views/ModHubView").then((module) => ({ default: module.ModHubView }))
 );
 
-type View = "mods" | "hub" | "download" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
+type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
 const APP_SETTINGS_KEY = "rimpro.appSettings";
 const DEFAULT_SETTINGS: AppSettings = {
   performanceLevel: "normal",
@@ -231,7 +232,12 @@ export default function App() {
 
         {/* View content */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div className={`main-view h-full flex flex-col overflow-hidden ${ultraPerformance ? "" : "animate-slide-up"}`} key={view}>
+          <div
+            className={`main-view h-full flex flex-col overflow-hidden ${
+              ultraPerformance || view === "workshop" ? "" : "animate-slide-up"
+            }`}
+            key={view}
+          >
             {showPerformanceSuggestion && view !== "settings" && (
               <div className="glass-card" style={{
                 padding: "16px 20px",
@@ -315,6 +321,7 @@ export default function App() {
               )}
               {view === "hub" && <ModHubView installedMods={mods} onRefresh={refreshMods} toast={toast} performanceLevel={appSettings.performanceLevel} />}
               {view === "download" && <DownloadView downloads={downloads} toast={toast} />}
+              {view === "workshop" && <WorkshopBrowserView toast={toast} active={view === "workshop"} />}
               {view === "collections" && (
                 <CollectionsView 
                   mods={mods} 

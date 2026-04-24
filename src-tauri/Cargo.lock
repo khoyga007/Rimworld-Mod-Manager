@@ -4101,7 +4101,7 @@ checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
 name = "rimworldmodmanager"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4129,6 +4129,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 0.8.2",
+ "url",
  "urlencoding",
  "walkdir",
  "zip",
