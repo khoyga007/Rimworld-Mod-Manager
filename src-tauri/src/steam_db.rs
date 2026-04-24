@@ -42,3 +42,21 @@ pub fn load_pfid_to_packageid() -> HashMap<String, String> {
 pub fn is_pfid(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
+
+/// Reverse lookup: package_id (lowercase) → published_file_id. Used to auto-download
+/// missing dependencies via SteamCMD.
+pub fn load_packageid_to_pfid() -> HashMap<String, String> {
+    let path = crate::paths::config_dir().join("steamDB.json");
+    let mut out = HashMap::new();
+    let Ok(txt) = std::fs::read_to_string(&path) else { return out; };
+    let Ok(db) = serde_json::from_str::<SteamDatabase>(&txt) else { return out; };
+    for (pfid, entry) in db.database {
+        if let Some(pkg) = entry.package_id {
+            if !pkg.is_empty() {
+                // First entry wins; Steam DB is typically deduped already.
+                out.entry(pkg.to_lowercase()).or_insert(pfid);
+            }
+        }
+    }
+    out
+}

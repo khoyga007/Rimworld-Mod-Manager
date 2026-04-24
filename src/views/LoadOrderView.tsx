@@ -80,6 +80,48 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
     }
   };
 
+  const autoInstallMissing = async () => {
+    if (!analysis) return;
+    const missingIds = Array.from(new Set(
+      analysis.issues
+        .filter((i: any) => i.kind === "MissingDependency")
+        .map((i: any) => i.missing as string)
+    ));
+    if (missingIds.length === 0) {
+      toast("No missing dependencies to install.", "info");
+      return;
+    }
+    try {
+      setLoading(true);
+      toast(`Resolving ${missingIds.length} missing dependencies...`, "info");
+      const resolutions = await invoke<Array<{ package_id: string; pfid: string | null }>>(
+        "resolve_missing_dependencies",
+        { packageIds: missingIds }
+      );
+      const downloadable = resolutions.filter(r => r.pfid).map(r => r.pfid as string);
+      const unresolved = resolutions.filter(r => !r.pfid).map(r => r.package_id);
+      if (downloadable.length === 0) {
+        toast(
+          `No Workshop IDs found for missing deps. Update Steam DB first. Unresolved: ${unresolved.slice(0, 5).join(", ")}${unresolved.length > 5 ? "..." : ""}`,
+          "warning"
+        );
+        return;
+      }
+      toast(`Downloading ${downloadable.length} mod(s) via SteamCMD...`, "info");
+      await invoke("download_workshop_mods_batch", { ids: downloadable });
+      toast(
+        `Queued ${downloadable.length} download(s)${unresolved.length ? `. ${unresolved.length} unresolved (not on Workshop or missing from DB).` : "."}`,
+        "success"
+      );
+      onRefresh();
+      setTimeout(analyzeOrder, 2000);
+    } catch (e: any) {
+      toast(e?.toString() || t('common.error'), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateSteamDb = async () => {
     try {
       setLoading(true);
@@ -235,9 +277,20 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
       {/* Analysis issues */}
       {analysis && analysis.issues.length > 0 && (
         <div className="glass-card" style={{ padding: 24, marginBottom: 24, borderLeft: "4px solid var(--color-warning)" }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 8 }}>
-            <span>⚠</span> {t(analysis.issues.length > 1 ? 'load_order.issues_found_plural' : 'load_order.issues_found', { count: analysis.issues.length })}
-          </h3>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--color-warning)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+              <span>⚠</span> {t(analysis.issues.length > 1 ? 'load_order.issues_found_plural' : 'load_order.issues_found', { count: analysis.issues.length })}
+            </h3>
+            {(() => {
+              const missingCount = analysis.issues.filter((i: any) => i.kind === "MissingDependency").length;
+              if (missingCount === 0) return null;
+              return (
+                <button className="btn-primary" onClick={autoInstallMissing} disabled={loading} title="Resolve missing dependencies against Steam DB and download via SteamCMD">
+                  ⬇ Auto-Install Missing ({missingCount})
+                </button>
+              );
+            })()}
+          </div>
           <div style={{ display: "grid", gap: 10 }}>
             {analysis.issues.slice(0, 15).map((issue, i) => (
               <div key={i} style={{

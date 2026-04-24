@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.7] - 2026-04-24
+
+### Added
+- **Auto-Install Missing Dependencies**: When the Load Order analyzer detects missing dependencies, a new "Auto-Install Missing" button resolves each `packageId` against the cached Steam DB, feeds the matching Workshop IDs to SteamCMD, and reports any entries that could not be resolved. Closes the loop between dependency detection and fixing.
+
 ## [0.5.6] - 2026-04-24
 
 ### Added

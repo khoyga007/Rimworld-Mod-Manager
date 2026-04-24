@@ -1,6 +1,6 @@
 [package]
 name = "rimworldmodmanager"
-version = "0.5.6"
+version = "0.5.7"
 description = "RimWorld Mod Manager"
 authors = ["you"]
 edition = "2021"

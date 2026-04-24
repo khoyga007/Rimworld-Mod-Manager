@@ -898,6 +898,31 @@ async fn update_steam_db() -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct MissingDepResolution {
+    pub package_id: String,
+    pub pfid: Option<String>,
+}
+
+/// Resolve a list of missing package_ids against the cached Steam DB and return
+/// which ones have a known Workshop ID (downloadable) vs. which are unknown.
+/// Does NOT trigger a download — the frontend calls download_workshop_mods_batch
+/// with the resolved pfids after the user confirms.
+#[tauri::command]
+async fn resolve_missing_dependencies(package_ids: Vec<String>) -> Result<Vec<MissingDepResolution>, String> {
+    let map = steam_db::load_packageid_to_pfid();
+    Ok(package_ids
+        .into_iter()
+        .map(|pkg| {
+            let key = pkg.to_lowercase();
+            MissingDepResolution {
+                pfid: map.get(&key).cloned(),
+                package_id: pkg,
+            }
+        })
+        .collect())
+}
+
 // ---------- Updates ----------
 #[tauri::command]
 async fn check_mod_updates(state: State<'_, AppState>) -> Result<Vec<updates::UpdateStatus>, String> {
@@ -1272,6 +1297,7 @@ pub fn run() {
             analyze_save_game,
             update_community_rules,
             update_steam_db,
+            resolve_missing_dependencies,
             read_mod_image,
             resize_mod_textures,
             resize_all_local_mods,
