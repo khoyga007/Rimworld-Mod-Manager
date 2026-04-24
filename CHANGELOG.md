@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-04-24
+
+### Added
+- **Alphabetical Sort Mode**: New "🔤 A-Z" button in the Load Order toolbar sorts enabled mods by name. Core + Ludeon DLCs stay pinned at the top; everything else is sorted case-insensitively. Uses the local-edit flow so you can Save or Discard the result.
+- **Custom Load Order Rules**: New "✏️ Rules" button opens a rule editor modal. Per-mod you can specify `loadAfter` / `loadBefore` package IDs, and "Pin to top" / "Pin to bottom" flags. Rules persist to `customRules.json` in the config dir and merge on top of the community rules during auto-sort — your overrides always win.
+- **Cross-Platform Release Builds**: The GitHub Actions release workflow now builds Windows (`.msi` / `.exe`), Linux (`.deb` / `.rpm` / `.AppImage`), and macOS (universal `.dmg` for Intel + Apple Silicon) in a single matrix job. Every tagged release ships artifacts for all three platforms.
+
 ## [0.5.9] - 2026-04-24
 
 ### Fixed

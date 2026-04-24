@@ -74,10 +74,23 @@ jobs:
           git push origin $tag
 
   build:
-    name: Build Windows Release
+    name: Build ${{ matrix.label }}
     needs: prepare
     if: needs.prepare.outputs.should_release == 'true'
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            label: Windows
+            args: ""
+          - platform: ubuntu-22.04
+            label: Linux
+            args: ""
+          - platform: macos-latest
+            label: macOS (universal)
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -88,13 +101,31 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Rust
+      - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.8.1
         with:
           workspaces: src-tauri
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libssl-dev \
+            build-essential \
+            curl \
+            wget \
+            file
 
       - name: Install frontend deps
         run: npm ci --legacy-peer-deps
@@ -105,10 +136,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
-          releaseName: "RimWorld Mod Manager ${{ needs.prepare.outputs.tag }}"
+          releaseName: "RimPro ${{ needs.prepare.outputs.tag }}"
           releaseBody: |
             Automated release for version ${{ needs.prepare.outputs.version }}.
 
-            Download the installer below (`.msi` or `.exe`).
+            Download the installer for your platform below:
+            - Windows: `.msi` or `.exe`
+            - Linux: `.deb`, `.rpm`, or `.AppImage`
+            - macOS: `.dmg` (universal: Intel + Apple Silicon)
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}

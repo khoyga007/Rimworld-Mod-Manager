@@ -196,6 +196,7 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
     let mut deps: HashMap<String, Vec<String>> = HashMap::new();
     let mut in_degree: HashMap<String, usize> = enabled.iter().map(|m| (m.id.clone(), 0)).collect();
     let rimpy = load_rimpy_rules();
+    let custom = crate::custom_rules::load_normalized();
     let steam_map = crate::steam_db::load_pfid_to_packageid();
     let mut issues: Vec<LoadOrderIssue> = Vec::new();
 
@@ -217,6 +218,10 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
         if let Some(rule) = rimpy.get(&m.id.to_lowercase()) {
             if let Some(r_la) = &rule.load_after { la.extend(r_la.keys().cloned()); }
             if let Some(r_lb) = &rule.load_before { lb.extend(r_lb.keys().cloned()); }
+        }
+        if let Some(rule) = custom.get(&m.id.to_lowercase()) {
+            la.extend(rule.load_after.iter().cloned());
+            lb.extend(rule.load_before.iter().cloned());
         }
         if let Some(pos) = ANCHOR_ORDER.iter().position(|&id| id == m.id.to_lowercase()) {
             if pos > 0 {
@@ -299,6 +304,10 @@ pub fn sort_and_analyze(mods: &[ModInfo]) -> (Vec<String>, Vec<LoadOrderIssue>) 
             } else if rule.load_bottom.as_ref().and_then(|f| f.value).unwrap_or(false) {
                 b = Bucket::Performance;
             }
+        }
+        if let Some(rule) = custom.get(&m.id.to_lowercase()) {
+            if rule.load_top { b = Bucket::Harmony; }
+            else if rule.load_bottom { b = Bucket::Performance; }
         }
         (m.id.clone(), b)
     }).collect();

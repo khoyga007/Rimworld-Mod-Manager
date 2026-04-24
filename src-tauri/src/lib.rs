@@ -1,6 +1,7 @@
 mod auto_sort;
 mod backups;
 mod collections;
+mod custom_rules;
 pub mod about;
 mod log_tail;
 mod mods;
@@ -909,6 +910,16 @@ pub struct MissingDepResolution {
 /// Does NOT trigger a download — the frontend calls download_workshop_mods_batch
 /// with the resolved pfids after the user confirms.
 #[tauri::command]
+async fn get_custom_rules() -> Result<custom_rules::CustomRules, String> {
+    Ok(custom_rules::load())
+}
+
+#[tauri::command]
+async fn save_custom_rules(rules: custom_rules::CustomRules) -> Result<(), String> {
+    custom_rules::save(&rules)
+}
+
+#[tauri::command]
 async fn resolve_missing_dependencies(package_ids: Vec<String>) -> Result<Vec<MissingDepResolution>, String> {
     let map = steam_db::load_packageid_to_pfid();
     Ok(package_ids
@@ -1297,6 +1308,8 @@ pub fn run() {
             analyze_save_game,
             update_community_rules,
             update_steam_db,
+            get_custom_rules,
+            save_custom_rules,
             resolve_missing_dependencies,
             read_mod_image,
             resize_mod_textures,

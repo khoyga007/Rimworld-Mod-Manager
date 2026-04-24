@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { ModInfo, SortPreview, LoadOrderAnalysis } from "../types";
+import CustomRulesModal from "../components/CustomRulesModal";
 
 interface Props {
   mods: ModInfo[];
@@ -16,6 +17,7 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
   const [loading, setLoading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [search, setSearch] = useState("");
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   // Drag state
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -155,6 +157,20 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
     setDirty(false);
   };
 
+  const sortAlphabetical = () => {
+    const isCoreOrDlc = (id: string) => {
+      const l = id.toLowerCase();
+      return l === "ludeon.rimworld" || l.startsWith("ludeon.rimworld.");
+    };
+    const base = localOrder ?? mods.filter((m) => m.enabled).sort((a, b) => a.load_order - b.load_order);
+    const pinned = base.filter((m) => isCoreOrDlc(m.id));
+    const rest = base
+      .filter((m) => !isCoreOrDlc(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    setLocalOrder([...pinned, ...rest]);
+    setDirty(true);
+  };
+
   // Drag handlers
   const handleDragStart = (idx: number) => {
     setDragIdx(idx);
@@ -205,6 +221,8 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
   const getModName = (id: string) => mods.find((m) => m.id === id)?.name || id;
 
   return (
+    <>
+    {rulesOpen && <CustomRulesModal mods={mods} toast={toast} onClose={() => { setRulesOpen(false); if (analysis) analyzeOrder(); }} />}
     <div className="animate-fade-in flex-1 overflow-y-auto p-8 custom-scrollbar">
       {/* Page Header */}
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
@@ -243,6 +261,12 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
           </button>
           <button className="btn-secondary" onClick={updateSteamDb} disabled={loading} title="Download Steam Workshop DB (maps workshop IDs to package IDs for accurate dependency resolution)">
             🛠 Steam DB
+          </button>
+          <button className="btn-secondary" onClick={sortAlphabetical} disabled={loading} title="Sort enabled mods A-Z by name (Core + DLCs stay pinned at top)">
+            🔤 A-Z
+          </button>
+          <button className="btn-secondary" onClick={() => setRulesOpen(true)} disabled={loading} title="Edit custom load order rules (merged on top of community rules)">
+            ✏️ Rules
           </button>
           <button className="btn-primary" onClick={applySort} disabled={loading}>
             ⚡ {t('load_order.apply_auto')}
@@ -485,5 +509,6 @@ export default function LoadOrderView({ mods, toast, onRefresh }: Props) {
         )}
       </div>
     </div>
+    </>
   );
 }
