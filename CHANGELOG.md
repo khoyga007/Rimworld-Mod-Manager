@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-04-25
+
+### Added
+- **In-App Steam Workshop Browser**: New "Duyệt Workshop" (Browse Workshop) tab hosts a native child webview that loads `steamcommunity.com/app/294100/workshop/` directly inside RimPro — no external browser, no copy/paste. Toolbar has Back/Forward/Home/Reload plus an editable URL bar.
+- **1-Click Download from Workshop Page**: The "Tải mod này" / "Download this mod" button reads the current URL of the embedded browser, parses the Workshop ID, and queues the mod through the existing SteamCMD pipeline. The button auto-enables only when the current page is a mod detail page.
+- **Back/Forward/Reload Navigation**: History navigation is wired through `webview.eval("history.back/forward()")` since Tauri's JS API doesn't expose history controls for child webviews.
+
+### Technical
+- Enabled the `unstable` feature on the `tauri` crate to access `Manager::get_webview` for child webviews (the stable `get_webview_window` only matches fused WebviewWindows).
+- Added Rust commands `workshop_webview_url / _navigate / _reload / _back / _forward` that operate on the child webview by label.
+- Bounds sync uses `window.devicePixelRatio` rather than `window.scaleFactor()` because Tauri reports `1.0` on Windows fractional-scale setups where the window actually renders at 1.2×, causing the webview to render at the wrong size.
+- Extended the default capability with `core:webview` permissions for create / set-position / set-size / close / show / hide / get-all-webviews.
+
 ## [0.6.1] - 2026-04-24
 
 ### Fixed

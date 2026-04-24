@@ -12,6 +12,12 @@ Windows, Linux, and macOS (universal) installers are published on every release.
 
 ## Highlights
 
+### In-app Steam Workshop browser *(new in 0.7.0)*
+- **Native embedded browser** — a dedicated "Duyệt Workshop" tab loads `steamcommunity.com/app/294100/workshop/` inside the app window via a Tauri child webview. No external browser, no `X-Frame-Options` issues.
+- **1-click download** — the "Tải mod này" / "Download this mod" button reads the current URL, extracts the Workshop ID, and queues the mod through the existing SteamCMD pipeline. Auto-disables when you're not on a mod detail page.
+- **Full navigation** — Back / Forward / Home / Reload buttons plus an editable URL bar. History controls are wired through `history.back()/forward()` via Tauri's `webview.eval`.
+- **Session reused** — webview closes when you switch tabs (frees RAM) and recreates on re-entry.
+
 ### Load order
 - **Community-rules auto-sort** — pulls the same `communityRules.json` that RimSort uses, runs a full DAG topological sort (Kahn's algorithm), honors bucket ordering (Harmony → Core → DLCs → Libraries → Total Conversion → Map/Biomes → Race → General → Animation → UI → Patch → Performance), and enforces anchor edges.
 - **Steam Workshop DB integration** — fetches RimSort's `steamDB.json` and resolves dependencies declared by numeric `publishedFileId` to the correct `packageId` before sorting. Closes the last resolution gap vs. RimSort.
