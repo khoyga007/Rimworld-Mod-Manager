@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.9] - 2026-04-24
+
+### Fixed
+- **Steam DB Duplicate Field Parse Error**: v0.5.8 added `serde(alias)` to accept both `packageId` and `packageid`, but most entries in RimSort's Steam DB contain BOTH keys on the same object. Serde treats aliases as duplicates of the same field and aborted parsing of the entire 44MB file, leaving the reverse map empty and Auto-Install Missing reporting every dependency as unresolved. Split into two separate optional fields (`packageId` + `packageid`) and merge at lookup time.
+
 ## [0.5.8] - 2026-04-24
 
 ### Fixed

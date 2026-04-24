@@ -15,12 +15,22 @@ pub struct SteamDatabase {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct SteamEntry {
-    // RimSort's steamDB.json uses `packageId` (camelCase) on most entries but some
-    // legacy entries also include `packageid` (all lowercase). Accept both.
-    #[serde(alias = "packageId", alias = "packageid")]
-    pub package_id: Option<String>,
+    // RimSort's steamDB.json redundantly stores BOTH `packageId` (camelCase) and
+    // `packageid` (lowercase) on the same entry. `serde(alias)` would treat them
+    // as duplicates and fail the entire parse, so capture them separately and
+    // merge via `package_id()`.
+    #[serde(default, rename = "packageId")]
+    pub package_id_camel: Option<String>,
+    #[serde(default, rename = "packageid")]
+    pub package_id_lower: Option<String>,
     #[allow(dead_code)]
     pub name: Option<String>,
+}
+
+impl SteamEntry {
+    pub fn package_id(&self) -> Option<&str> {
+        self.package_id_camel.as_deref().or(self.package_id_lower.as_deref())
+    }
 }
 
 /// Load the cached Steam DB and build a pfid → packageid (lowercase) map.
@@ -31,7 +41,7 @@ pub fn load_pfid_to_packageid() -> HashMap<String, String> {
     let Ok(txt) = std::fs::read_to_string(&path) else { return out; };
     let Ok(db) = serde_json::from_str::<SteamDatabase>(&txt) else { return out; };
     for (pfid, entry) in db.database {
-        if let Some(pkg) = entry.package_id {
+        if let Some(pkg) = entry.package_id() {
             if !pkg.is_empty() {
                 out.insert(pfid, pkg.to_lowercase());
             }
@@ -53,9 +63,8 @@ pub fn load_packageid_to_pfid() -> HashMap<String, String> {
     let Ok(txt) = std::fs::read_to_string(&path) else { return out; };
     let Ok(db) = serde_json::from_str::<SteamDatabase>(&txt) else { return out; };
     for (pfid, entry) in db.database {
-        if let Some(pkg) = entry.package_id {
+        if let Some(pkg) = entry.package_id() {
             if !pkg.is_empty() {
-                // First entry wins; Steam DB is typically deduped already.
                 out.entry(pkg.to_lowercase()).or_insert(pfid);
             }
         }
