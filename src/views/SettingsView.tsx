@@ -19,6 +19,16 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
   const [texconvBusy, setTexconvBusy] = useState(false);
   const [backups, setBackups] = useState<Array<{ name: string; path: string; timestamp_ms: number; size_bytes: number; enabled_count: number }>>([]);
   const [backupsBusy, setBackupsBusy] = useState(false);
+  const [aiCfg, setAiCfg] = useState<{ provider: string; gemini_api_key: string; gemini_model: string; ollama_url: string; ollama_model: string; manual_only: boolean }>({
+    provider: "off",
+    gemini_api_key: "",
+    gemini_model: "gemini-2.0-flash",
+    ollama_url: "http://localhost:11434",
+    ollama_model: "llama3.1",
+    manual_only: true,
+  });
+  const [aiBusy, setAiBusy] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
   const performanceEnabled = settings.performanceLevel !== "normal";
   const ultraPerformance = settings.performanceLevel === "ultra";
 
@@ -37,7 +47,29 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
     });
     invoke<boolean>("check_texconv").then(setTexconvInstalled).catch(() => setTexconvInstalled(false));
     refreshBackups();
+    invoke<typeof aiCfg>("get_ai_config").then(setAiCfg).catch(() => undefined);
   }, []);
+
+  const saveAi = async (next: typeof aiCfg) => {
+    setAiCfg(next);
+    try {
+      await invoke("save_ai_config", { config: next });
+    } catch (e: any) {
+      toast(e?.toString() || "Save AI config failed", "error");
+    }
+  };
+
+  const testAi = async () => {
+    setAiBusy(true);
+    try {
+      const out = await invoke<string>("test_ai_provider", { config: aiCfg });
+      toast(`✓ ${aiCfg.provider}: ${out.slice(0, 80)}`, "success");
+    } catch (e: any) {
+      toast(e?.toString() || "Test failed", "error");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const refreshBackups = async () => {
     setBackupsBusy(true);
@@ -394,6 +426,119 @@ export default function SettingsView({ paths, settings, onSettingsChange, onPath
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </section>
+
+        {/* AI Crash Analyzer */}
+        <section className="glass-card" style={{ padding: 24, gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🤖 {t('settings.ai_title') || 'AI Crash Analyzer'}</h3>
+              <div style={{ fontSize: 13, color: "var(--color-text-dim)", marginTop: 4 }}>
+                {t('settings.ai_desc') || 'Configure your AI provider for deep crash analysis. BYOK Gemini (free tier 1500/day) or run a local model via Ollama.'}
+              </div>
+            </div>
+            <button className="btn-secondary" onClick={testAi} disabled={aiBusy || aiCfg.provider === 'off'}>
+              {aiBusy ? '⏳ Testing...' : '🧪 ' + (t('settings.ai_test') || 'Test connection')}
+            </button>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {(['off', 'gemini', 'ollama'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => saveAi({ ...aiCfg, provider: p })}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  border: aiCfg.provider === p ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+                  background: aiCfg.provider === p ? "var(--color-bg-active)" : "rgba(0,0,0,0.2)",
+                  color: aiCfg.provider === p ? "var(--color-accent)" : "var(--color-text)",
+                  cursor: "pointer",
+                }}
+              >
+                {p === 'off' ? '⏸ Off' : p === 'gemini' ? '✨ Gemini (BYOK)' : '🦙 Ollama (local)'}
+              </button>
+            ))}
+          </div>
+
+          {aiCfg.provider === 'gemini' && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--color-text-dim)", display: "block", marginBottom: 4 }}>
+                  {t('settings.ai_gemini_key') || 'Gemini API key'} —{' '}
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{ color: "var(--color-accent)" }}>
+                    {t('settings.ai_get_key') || 'get a free key'}
+                  </a>
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="input-field"
+                    type={showApiKey ? "text" : "password"}
+                    value={aiCfg.gemini_api_key}
+                    onChange={(e) => setAiCfg({ ...aiCfg, gemini_api_key: e.target.value })}
+                    onBlur={() => saveAi(aiCfg)}
+                    placeholder="AIza..."
+                    style={{ flex: 1 }}
+                  />
+                  <button className="btn-secondary" onClick={() => setShowApiKey(s => !s)}>
+                    {showApiKey ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--color-text-dim)", display: "block", marginBottom: 4 }}>
+                  {t('settings.ai_model') || 'Model'}
+                </label>
+                <select
+                  className="input-field"
+                  value={aiCfg.gemini_model}
+                  onChange={(e) => saveAi({ ...aiCfg, gemini_model: e.target.value })}
+                  style={{ width: "100%" }}
+                >
+                  <option value="gemini-2.5-flash">gemini-2.5-flash (newest, smart + fast)</option>
+                  <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                  <option value="gemini-2.5-pro">gemini-2.5-pro (smartest, slower)</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash (free 1500/day)</option>
+                  <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                  <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {aiCfg.provider === 'ollama' && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--color-text-dim)", display: "block", marginBottom: 4 }}>
+                  {t('settings.ai_ollama_url') || 'Ollama URL'}
+                </label>
+                <input
+                  className="input-field"
+                  value={aiCfg.ollama_url}
+                  onChange={(e) => setAiCfg({ ...aiCfg, ollama_url: e.target.value })}
+                  onBlur={() => saveAi(aiCfg)}
+                  placeholder="http://localhost:11434"
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--color-text-dim)", display: "block", marginBottom: 4 }}>
+                  {t('settings.ai_model') || 'Model'} ({t('settings.ai_ollama_model_hint') || 'must be pulled locally first: ollama pull <name>'})
+                </label>
+                <input
+                  className="input-field"
+                  value={aiCfg.ollama_model}
+                  onChange={(e) => setAiCfg({ ...aiCfg, ollama_model: e.target.value })}
+                  onBlur={() => saveAi(aiCfg)}
+                  placeholder="llama3.1"
+                  style={{ width: "100%" }}
+                />
+              </div>
             </div>
           )}
         </section>

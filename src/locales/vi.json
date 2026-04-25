@@ -30,6 +30,7 @@
     "load_order": "Thứ tự load",
     "save_games": "File Save",
     "logs": "Nhật ký (Log)",
+    "crash_analyzer": "Phân tích Crash",
     "guide": "Hướng dẫn",
     "downloads": "Tải về",
     "workshop_browser": "Duyệt Workshop",
@@ -91,6 +92,14 @@
     "footer_warning": "Các bản mod này có thể không an toàn hoặc chứa nội dung nhạy cảm. Hãy tự chịu trách nhiệm."
   },
   "settings": {
+    "ai_title": "AI Crash Analyzer",
+    "ai_desc": "Cấu hình AI phân tích crash. Gemini BYOK (free 1500/ngày) hoặc Ollama chạy local.",
+    "ai_test": "Test kết nối",
+    "ai_gemini_key": "Gemini API key",
+    "ai_get_key": "lấy key miễn phí",
+    "ai_model": "Model",
+    "ai_ollama_url": "Ollama URL",
+    "ai_ollama_model_hint": "phải pull về máy trước: ollama pull <tên>",
     "title": "Cài đặt",
     "description": "Cấu hình đường dẫn game và thư mục mod của RimWorld.",
     "game_directory": "Thư mục Game",
@@ -308,5 +317,30 @@
     "download_this": "Tải mod này",
     "not_a_mod_page": "Mở trang chi tiết mod trước đã.",
     "queued": "Đã thêm vào hàng chờ:"
+  },
+  "crash": {
+    "title": "Phân tích Crash",
+    "subtitle": "Đọc Player.log, tìm mod gây lỗi, gọi AI để có hướng sửa nếu cần.",
+    "analyze": "Phân tích Player.log",
+    "analyzing": "Đang phân tích...",
+    "custom_path": "Đường dẫn log tự chọn (tùy chọn)",
+    "empty_hint": "Nhấn Phân tích để quét Player.log. App tự dò vị trí mặc định trên Win/Linux/Mac.",
+    "no_exceptions": "Không tìm thấy exception nào trong log",
+    "found_exceptions": "Tìm được {{count}} exception",
+    "exceptions": "Exception",
+    "unique_blocks": "Block riêng",
+    "suspects": "Nghi phạm (heuristic)",
+    "harmony": "Harmony refs",
+    "ai_section": "AI Phân tích sâu",
+    "ai_run": "Chạy AI",
+    "ai_running": "Đang hỏi AI...",
+    "ai_done": "AI phân tích xong",
+    "ai_hint": "Gửi excerpt + nghi phạm heuristic tới provider đã cấu hình (Gemini BYOK hoặc Ollama local). Cấu hình ở Cài đặt.",
+    "root_cause": "Nguyên nhân gốc",
+    "fix_steps": "Cách sửa",
+    "ai_suspects": "Nghi phạm AI",
+    "heuristic_suspects": "Nghi phạm Heuristic",
+    "exception_blocks": "Các block Exception",
+    "raw_excerpt": "Log gốc"
   }
 }

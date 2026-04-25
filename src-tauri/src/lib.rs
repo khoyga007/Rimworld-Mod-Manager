@@ -1,6 +1,8 @@
+mod ai;
 mod auto_sort;
 mod backups;
 mod collections;
+mod crash_analyzer;
 mod custom_rules;
 pub mod about;
 mod log_tail;
@@ -1273,6 +1275,60 @@ fn workshop_webview_forward<R: tauri::Runtime>(app: AppHandle<R>, label: String)
     wv.eval("window.history.forward()").map_err(|e| e.to_string())
 }
 
+// -------- Crash analyzer + AI commands --------
+
+fn build_installed_refs(state: &State<AppState>) -> Vec<crash_analyzer::InstalledModRef> {
+    let p = state.paths.lock().unwrap().clone();
+    let list = mods::list(&p).unwrap_or_default();
+    list.into_iter()
+        .map(|m| crash_analyzer::InstalledModRef {
+            id: m.id.clone(),
+            name: m.name,
+            package_id: Some(m.id),
+            author: Some(m.author),
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn analyze_crash_log(state: State<AppState>, custom_path: Option<String>) -> Result<crash_analyzer::CrashReport, String> {
+    let path = match custom_path {
+        Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
+        _ => crash_analyzer::default_player_log()
+            .ok_or_else(|| "Player.log not found. Launch RimWorld at least once or pick a file.".to_string())?,
+    };
+    let text = crash_analyzer::read_log_tail(&path, 600 * 1024)?;
+    let installed = build_installed_refs(&state);
+    let report = crash_analyzer::analyze(&path.to_string_lossy(), &text, &installed);
+    Ok(report)
+}
+
+#[tauri::command]
+async fn analyze_crash_with_ai(
+    state: State<'_, AppState>,
+    report: crash_analyzer::CrashReport,
+    lang: Option<String>,
+) -> Result<ai::AiAnalysis, String> {
+    let installed = build_installed_refs(&state);
+    let l = lang.unwrap_or_else(|| "en".to_string());
+    ai::analyze_with_ai(&report, &installed, &l).await
+}
+
+#[tauri::command]
+fn get_ai_config() -> ai::AiConfig {
+    ai::load_config()
+}
+
+#[tauri::command]
+fn save_ai_config(config: ai::AiConfig) -> Result<(), String> {
+    ai::save_config(&config)
+}
+
+#[tauri::command]
+async fn test_ai_provider(config: ai::AiConfig) -> Result<String, String> {
+    ai::test_provider(&config).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_paths = paths::detect().unwrap_or(RimWorldPaths {
@@ -1356,6 +1412,11 @@ pub fn run() {
             workshop_webview_reload,
             workshop_webview_back,
             workshop_webview_forward,
+            analyze_crash_log,
+            analyze_crash_with_ai,
+            get_ai_config,
+            save_ai_config,
+            test_ai_provider,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

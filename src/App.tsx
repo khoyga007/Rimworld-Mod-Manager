@@ -14,11 +14,12 @@ const WorkshopBrowserView = lazy(() => import("./views/WorkshopBrowserView"));
 const CollectionsView = lazy(() => import("./views/CollectionsView"));
 const SaveGameView = lazy(() => import("./views/SaveGameView"));
 const GuideView = lazy(() => import("./views/GuideView"));
+const CrashAnalyzerView = lazy(() => import("./views/CrashAnalyzerView"));
 const ModHubView = lazy(() =>
   import("./views/ModHubView").then((module) => ({ default: module.ModHubView }))
 );
 
-type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
+type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide" | "crash";
 const APP_SETTINGS_KEY = "rimpro.appSettings";
 const DEFAULT_SETTINGS: AppSettings = {
   performanceLevel: "normal",
@@ -334,6 +335,7 @@ export default function App() {
               {view === "loadorder" && <LoadOrderView mods={mods} toast={toast} onRefresh={refreshMods} />}
               {view === "saves" && <SaveGameView toast={toast} onRefresh={refreshMods} />}
               {view === "logs" && <LogsView />}
+              {view === "crash" && <CrashAnalyzerView toast={toast} />}
               {view === "guide" && <GuideView />}
               {view === "settings" && (
                 <SettingsView

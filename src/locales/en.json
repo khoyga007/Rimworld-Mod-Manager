@@ -30,6 +30,7 @@
     "load_order": "Load Order",
     "save_games": "Save Games",
     "logs": "Logs",
+    "crash_analyzer": "Crash Analyzer",
     "guide": "User Guide",
     "downloads": "Downloads",
     "workshop_browser": "Browse Workshop",
@@ -91,6 +92,14 @@
     "footer_warning": "These mods may be unsafe or contain sensitive content. Use at your own risk."
   },
   "settings": {
+    "ai_title": "AI Crash Analyzer",
+    "ai_desc": "Configure AI provider for deep crash analysis. BYOK Gemini (free 1500/day) or local Ollama.",
+    "ai_test": "Test connection",
+    "ai_gemini_key": "Gemini API key",
+    "ai_get_key": "get a free key",
+    "ai_model": "Model",
+    "ai_ollama_url": "Ollama URL",
+    "ai_ollama_model_hint": "must be pulled locally first: ollama pull <name>",
     "title": "Settings",
     "description": "Configure RimWorld executable and mod directories.",
     "game_directory": "Game Directory",
@@ -308,5 +317,30 @@
     "download_this": "Download this mod",
     "not_a_mod_page": "Open a mod detail page first.",
     "queued": "Queued mod:"
+  },
+  "crash": {
+    "title": "Crash Analyzer",
+    "subtitle": "Parse Player.log, surface culprit mods, optionally call AI for a fix plan.",
+    "analyze": "Analyze Player.log",
+    "analyzing": "Analyzing...",
+    "custom_path": "Custom log path (optional)",
+    "empty_hint": "Click Analyze to scan Player.log. We auto-detect the default location across Win/Linux/Mac.",
+    "no_exceptions": "No exceptions found in log",
+    "found_exceptions": "Found {{count}} exception(s)",
+    "exceptions": "Exceptions",
+    "unique_blocks": "Unique blocks",
+    "suspects": "Heuristic suspects",
+    "harmony": "Harmony refs",
+    "ai_section": "AI Deep Analysis",
+    "ai_run": "Run AI Analysis",
+    "ai_running": "Asking AI...",
+    "ai_done": "AI analysis complete",
+    "ai_hint": "Sends excerpt + heuristic suspects to your configured provider (Gemini BYOK or local Ollama). Configure in Settings.",
+    "root_cause": "Root cause",
+    "fix_steps": "Fix steps",
+    "ai_suspects": "AI suspects",
+    "heuristic_suspects": "Heuristic Suspects",
+    "exception_blocks": "Exception Blocks",
+    "raw_excerpt": "Raw log excerpt"
   }
 }

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide";
+type View = "mods" | "hub" | "download" | "workshop" | "collections" | "loadorder" | "saves" | "logs" | "settings" | "guide" | "crash";
 
 interface Props {
   currentView: View;
@@ -22,6 +22,7 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
     { id: "loadorder", icon: "📊", label: t('nav.load_order') },
     { id: "saves", icon: "🏰", label: t('nav.save_games') },
     { id: "logs", icon: "📜", label: t('nav.logs') },
+    { id: "crash", icon: "🩺", label: t('nav.crash_analyzer') },
     { id: "guide", icon: "📖", label: t('nav.guide') },
     { id: "settings", icon: "⚙", label: t('nav.settings') },
   ];
@@ -34,10 +35,10 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
   return (
     <aside className="sidebar">
       {/* Brand */}
-      <div style={{ padding: "0 16px 24px" }}>
+      <div style={{ padding: "0 12px 12px", flexShrink: 0 }}>
         <div style={{
           fontFamily: "var(--font-display)",
-          fontSize: 22,
+          fontSize: 20,
           fontWeight: 700,
           color: "var(--color-text)",
           letterSpacing: "-0.03em",
@@ -45,7 +46,7 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
           RIM<span style={{ color: "var(--color-accent)" }}>PRO</span>
         </div>
         <div style={{
-          fontSize: 11,
+          fontSize: 10,
           color: "var(--color-text-dim)",
           marginTop: 2,
           textTransform: "uppercase",
@@ -57,20 +58,21 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
       </div>
 
       {/* Stats Summary */}
-      <div className="glass-card" style={{ 
-        margin: "0 8px 24px", 
-        padding: "16px", 
-        display: "flex", 
+      <div className="glass-card sidebar-stats" style={{
+        margin: "0 4px 10px",
+        padding: "10px 12px",
+        display: "flex",
         justifyContent: "space-around",
-        background: "rgba(255,255,255,0.02)"
+        background: "rgba(255,255,255,0.02)",
+        flexShrink: 0,
       }}>
         <Stat label={t('common.total')} value={modCount} />
-        <div style={{ width: 1, background: "var(--color-border)", margin: "4px 0" }}></div>
+        <div style={{ width: 1, background: "var(--color-border)", margin: "2px 0" }}></div>
         <Stat label={t('common.active')} value={enabledCount} color="var(--color-success)" />
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+      <nav className="sidebar-nav">
         {NAV.map((item) => (
           <button
             key={item.id}
@@ -93,36 +95,41 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
         ))}
       </nav>
 
-      {/* Language Switcher */}
-      <div style={{ padding: "8px", borderTop: "1px solid var(--color-border)", marginTop: "auto" }}>
-        <button 
+      {/* Footer: language + version compact */}
+      <div style={{
+        padding: "8px 4px 0",
+        borderTop: "1px solid var(--color-border)",
+        marginTop: 6,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        <button
           onClick={toggleLanguage}
           className="btn-secondary"
-          style={{ 
-            width: "100%", 
-            fontSize: 11, 
-            display: "flex", 
-            alignItems: "center", 
+          style={{
+            flex: 1,
+            fontSize: 10,
+            display: "flex",
+            alignItems: "center",
             justifyContent: "center",
-            gap: 8,
-            padding: "8px"
+            gap: 6,
+            padding: "6px 8px",
           }}
+          title={i18n.language === 'en' ? 'English' : 'Tiếng Việt'}
         >
           <span>🌐</span>
-          <span>{i18n.language === 'en' ? 'ENGLISH' : 'TIẾNG VIỆT'}</span>
+          <span>{i18n.language === 'en' ? 'EN' : 'VI'}</span>
         </button>
-      </div>
-
-      {/* Footer */}
-      <div style={{
-        padding: "16px",
-        fontSize: 11,
-        color: "var(--color-text-dim)",
-        textAlign: "center",
-        borderTop: "1px solid var(--color-border)"
-      }}>
-        <div style={{ fontWeight: 600, color: "var(--color-text-muted)" }}>v1.0.0-PRO</div>
-        <div>Ready for A17+</div>
+        <div style={{
+          fontSize: 10,
+          color: "var(--color-text-dim)",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}>
+          v1.0.0
+        </div>
       </div>
     </aside>
   );
@@ -130,9 +137,9 @@ export default function Sidebar({ currentView, onNavigate, modCount, enabledCoun
 
 function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: color || "var(--color-text)" }}>{value}</div>
-      <div style={{ fontSize: 10, color: "var(--color-text-dim)", textTransform: "uppercase" }}>{label}</div>
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: color || "var(--color-text)", lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: "var(--color-text-dim)", textTransform: "uppercase", marginTop: 2 }}>{label}</div>
     </div>
   );
 }
